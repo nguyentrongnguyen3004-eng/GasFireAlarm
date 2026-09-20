@@ -1,85 +1,367 @@
-#include <Arduino.h>
-#include <ESP32Servo.h> // Thư viện điều khiển Servo trên ESP32
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <ESP32Servo.h>
 
-// ==========================================
-// THÀNH VIÊN 1: KHAI BÁO CHÂN KẾT NỐI (PINS)
-// ==========================================
-// 1. Cảm biến đầu vào (Input)
-const int MQ2_PIN = 34;      // Chân Analog A0 đọc cảm biến Gas MQ-2
-const int FLAME_PIN = 35;    // Chân Digital đọc cảm biến lửa
-const int DHT_PIN = 32;      // Chân Digital đọc nhiệt độ (Nếu có dùng)
+// =================================================
+// KHAI BAO CHAN ESP32-S2-MINI-1
+// =================================================
 
-// 2. Thiết bị đầu ra (Output)
-const int BUZZER_PIN = 25;   // Còi báo động & Đèn chớp
-const int RELAY_PIN = 26;    // Relay bật quạt thông gió
-const int SERVO_PIN = 27;    // Cấp xung PWM cho Servo khóa van gas
+#define MQ2_PIN       13
+#define DS18B20_PIN   2
 
-// Khởi tạo đối tượng Servo
-Servo gasValveServo;
+#define RELAY_PIN     26
+#define BUZZER_PIN    15
 
-// Biến lưu trữ dữ liệu
-int gasValue = 0;
-int flameValue = 0;
+#define LED_GREEN     16
+#define LED_RED       17
 
-void setup() {
-  Serial.begin(115200); // Khởi tạo giao tiếp Serial để xem kết quả trên máy tính
+#define SERVO_PIN     33
 
-  // Cấu hình chân đầu vào
-  pinMode(MQ2_PIN, INPUT);
-  pinMode(FLAME_PIN, INPUT);
-  // (Nếu dùng DHT11, thêm code khởi tạo thư viện DHT tại đây)
+#define SDA_PIN       21
+#define SCL_PIN       19
 
-  // Cấu hình chân đầu ra
-  pinMode(BUZZER_PIN, OUTPUT);
-  pinMode(RELAY_PIN, OUTPUT);
-  
-  // Khởi tạo Servo
-  gasValveServo.attach(SERVO_PIN);
-  gasValveServo.write(0); // Đặt van ở vị trí mở (0 độ) ban đầu
 
-  // Đảm bảo còi và relay đang tắt
-  digitalWrite(BUZZER_PIN, LOW);
-  digitalWrite(RELAY_PIN, LOW);
+// =================================================
+// LCD I2C
+// =================================================
 
-  // [Yêu cầu hệ thống] Khởi động và làm nóng cảm biến Gas
-  Serial.println("Hệ thống đang khởi động...");
-  Serial.println("Đang làm nóng cảm biến MQ-2 (Gỉa lập chờ 10s)...");
-  // Trong thực tế cần 1-3 phút, ở mô phỏng ta chỉ chờ 10s để test nhanh
-  delay(10000); 
-  Serial.println("Hoàn tất làm nóng. Bắt đầu thu thập dữ liệu!");
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+
+// =================================================
+// DS18B20
+// =================================================
+
+OneWire oneWire(DS18B20_PIN);
+DallasTemperature temperatureSensor(&oneWire);
+
+
+// =================================================
+// SERVO
+// =================================================
+
+Servo gasValve;
+
+
+// =================================================
+// NGUONG CANH BAO
+// =================================================
+
+// Gia tri MQ-2 co the thay doi tuy mo phong
+int gasThreshold = 1800;
+
+// Nhiet do canh bao
+float temperatureThreshold = 50.0;
+
+
+// =================================================
+// TRANG THAI HE THONG
+// =================================================
+
+bool gasAlarm = false;
+bool temperatureAlarm = false;
+
+
+// =================================================
+// HAM HIEN THI LCD
+// =================================================
+
+void showLCD(String line1, String line2)
+{
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print(line1);
+
+  lcd.setCursor(0, 1);
+  lcd.print(line2);
 }
 
-void loop() {
-  // ==========================================
-  // THÀNH VIÊN 1: THU THẬP DỮ LIỆU & ĐIỀU KHIỂN
-  // ==========================================
-  
-  // 1. Lấy mẫu liên tục (đọc cảm biến)
-  gasValue = analogRead(MQ2_PIN);
-  flameValue = digitalRead(FLAME_PIN); 
 
-  // In kết quả ra Serial Monitor để kiểm tra
-  Serial.print("Nồng độ Gas: ");
-  Serial.print(gasValue);
-  Serial.print(" | Cảm biến Lửa: ");
-  Serial.println(flameValue == LOW ? "PHÁT HIỆN LỬA!" : "An toàn"); 
-  // (Cảm biến lửa thường báo LOW khi có lửa)
+// =================================================
+// TRANG THAI AN TOAN
+// =================================================
 
-  // 2. Lập trình điều khiển thiết bị đầu ra (Test tính năng xuất tín hiệu)
-  // GHI CHÚ CHO TV2: Thành viên 2 sẽ sửa lại logic if/else này kết hợp với hàm lọc nhiễu
-  
-  if (gasValue > 2000 || flameValue == LOW) { // Giả sử 2000 là ngưỡng nguy hiểm
-    // Trạng thái báo động
-    digitalWrite(BUZZER_PIN, HIGH);     // Bật còi & đèn
-    digitalWrite(RELAY_PIN, HIGH);      // Bật quạt thông gió
-    gasValveServo.write(90);            // Quay servo 90 độ để khóa van gas
-  } else {
-    // Trạng thái an toàn
-    digitalWrite(BUZZER_PIN, LOW);      // Tắt còi
-    digitalWrite(RELAY_PIN, LOW);       // Tắt quạt
-    gasValveServo.write(0);             // Mở van gas
+void normalState(float temperature, int gasValue)
+{
+  // LED
+  digitalWrite(LED_GREEN, HIGH);
+  digitalWrite(LED_RED, LOW);
+
+  // Tat coi
+  digitalWrite(BUZZER_PIN, LOW);
+
+  // Tat relay
+  digitalWrite(RELAY_PIN, LOW);
+
+  // Mo van gas
+  gasValve.write(0);
+
+  // LCD
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("HE THONG AN TOAN");
+
+  lcd.setCursor(0, 1);
+  lcd.print("T:");
+  lcd.print(temperature, 1);
+  lcd.print("C G:");
+  lcd.print(gasValue);
+}
+
+
+// =================================================
+// TRANG THAI RO RI GAS
+// =================================================
+
+void gasAlarmState()
+{
+  // LED
+  digitalWrite(LED_GREEN, LOW);
+  digitalWrite(LED_RED, HIGH);
+
+  // Bat coi
+  digitalWrite(BUZZER_PIN, HIGH);
+
+  // Bat relay
+  digitalWrite(RELAY_PIN, HIGH);
+
+  // Dong van
+  gasValve.write(90);
+
+  // LCD
+  showLCD("CANH BAO RO GAS", "VAN: DONG");
+}
+
+
+// =================================================
+// TRANG THAI NHIET DO CAO
+// =================================================
+
+void temperatureAlarmState()
+{
+  // LED
+  digitalWrite(LED_GREEN, LOW);
+  digitalWrite(LED_RED, HIGH);
+
+  // Bat coi
+  digitalWrite(BUZZER_PIN, HIGH);
+
+  // Bat relay
+  digitalWrite(RELAY_PIN, HIGH);
+
+  // Dong van
+  gasValve.write(90);
+
+  // LCD
+  showLCD("NHIET DO CAO", "VAN: DONG");
+}
+
+
+// =================================================
+// TRANG THAI NGUY HIEM
+// =================================================
+
+void dangerState()
+{
+  // LED
+  digitalWrite(LED_GREEN, LOW);
+  digitalWrite(LED_RED, HIGH);
+
+  // Bat coi
+  digitalWrite(BUZZER_PIN, HIGH);
+
+  // Bat relay
+  digitalWrite(RELAY_PIN, HIGH);
+
+  // Dong van
+  gasValve.write(90);
+
+  // LCD
+  showLCD("!!! NGUY HIEM !!!", "GAS + NHIET CAO");
+}
+
+
+// =================================================
+// SETUP
+// =================================================
+
+void setup()
+{
+  Serial.begin(115200);
+
+  // -------------------------
+  // Cau hinh chan
+  // -------------------------
+
+  pinMode(MQ2_PIN, INPUT);
+
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(LED_RED, OUTPUT);
+
+
+  // -------------------------
+  // I2C
+  // -------------------------
+
+  Wire.begin(SDA_PIN, SCL_PIN);
+
+
+  // -------------------------
+  // LCD
+  // -------------------------
+
+  lcd.init();
+  lcd.backlight();
+
+
+  // -------------------------
+  // DS18B20
+  // -------------------------
+
+  temperatureSensor.begin();
+
+
+  // -------------------------
+  // SERVO
+  // -------------------------
+
+  gasValve.attach(SERVO_PIN);
+
+  gasValve.write(0);
+
+
+  // -------------------------
+  // Trang thai ban dau
+  // -------------------------
+
+  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  digitalWrite(LED_GREEN, HIGH);
+  digitalWrite(LED_RED, LOW);
+
+
+  // -------------------------
+  // Man hinh khoi dong
+  // -------------------------
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("HE THONG CANH");
+
+  lcd.setCursor(0, 1);
+  lcd.print("BAO GAS");
+
+  delay(2000);
+
+  lcd.clear();
+}
+
+
+// =================================================
+// LOOP
+// =================================================
+
+void loop()
+{
+  // =================================================
+  // DOC CAM BIEN MQ-2
+  // =================================================
+
+  int gasValue = analogRead(MQ2_PIN);
+
+
+  // =================================================
+  // DOC CAM BIEN DS18B20
+  // =================================================
+
+  temperatureSensor.requestTemperatures();
+
+  float temperature =
+    temperatureSensor.getTempCByIndex(0);
+
+
+  // =================================================
+  // KIEM TRA GAS
+  // =================================================
+
+  if (gasValue >= gasThreshold)
+  {
+    gasAlarm = true;
+  }
+  else
+  {
+    gasAlarm = false;
   }
 
-  // Tần số lấy mẫu: 500ms/lần theo yêu cầu tài liệu
-  delay(500); 
+
+  // =================================================
+  // KIEM TRA NHIET DO
+  // =================================================
+
+  if (temperature >= temperatureThreshold)
+  {
+    temperatureAlarm = true;
+  }
+  else
+  {
+    temperatureAlarm = false;
+  }
+
+
+  // =================================================
+  // HIEN THI SERIAL MONITOR
+  // =================================================
+
+  Serial.print("MQ-2 = ");
+  Serial.print(gasValue);
+
+  Serial.print(" | Nhiet do = ");
+  Serial.print(temperature);
+
+  Serial.print(" C | Trang thai: ");
+
+
+  // =================================================
+  // XU LY CAC TRANG THAI
+  // =================================================
+
+  if (gasAlarm && temperatureAlarm)
+  {
+    Serial.println("NGUY HIEM");
+
+    dangerState();
+  }
+
+  else if (gasAlarm)
+  {
+    Serial.println("RO RI GAS");
+
+    gasAlarmState();
+  }
+
+  else if (temperatureAlarm)
+  {
+    Serial.println("NHIET DO CAO");
+
+    temperatureAlarmState();
+  }
+
+  else
+  {
+    Serial.println("AN TOAN");
+
+    normalState(temperature, gasValue);
+  }
+
+
+  delay(1000);
 }
