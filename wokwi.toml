@@ -1,40 +1,4 @@
-{
-  "version": 1,
-  "author": "Thành viên 1 - Nhóm 12",
-  "editor": "wokwi",
-  "parts": [
-    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": -4.68, "left": -79.88, "attrs": {} },
-    { "type": "wokwi-potentiometer", "id": "pot1", "top": -120.35, "left": -156.45, "attrs": {} },
-    { "type": "wokwi-slide-switch", "id": "sw1", "top": -29.2, "left": -151.7, "attrs": {} },
-    { "type": "wokwi-buzzer", "id": "buzzer1", "top": -144, "left": 67.2, "attrs": {} },
-    {
-      "type": "wokwi-led",
-      "id": "led1",
-      "top": -80.4,
-      "left": 99.8,
-      "attrs": { "color": "red" }
-    },
-    { "type": "wokwi-relay-module", "id": "relay1", "top": -61.6, "left": 158.4, "attrs": {} },
-    { "type": "wokwi-servo", "id": "servo1", "top": 40.5, "left": 153.6, "attrs": {} }
-  ],
-  "connections": [
-    [ "esp:TX", "$serialMonitor:RX", "", [] ],
-    [ "esp:RX", "$serialMonitor:TX", "", [] ],
-    [ "esp:3V3", "pot1:VCC", "red", [ "v-32", "h-76.7", "v-86.4" ] ],
-    [ "esp:GND.1", "pot1:GND", "black", [ "v-12", "h-53.1", "v-115.2" ] ],
-    [ "esp:34", "pot1:SIG", "green", [ "v-82.7", "h-86.4" ] ],
-    [ "esp:35", "sw1:2", "blue", [ "v-7.9", "h-29.2", "v-19.2", "h-38.4" ] ],
-    [ "esp:GND.1", "sw1:1", "black", [ "v-12", "h-53.1", "v-28.8", "h-38.4" ] ],
-    [ "esp:GND.1", "buzzer1:1", "black", [ "v-12", "h38.4", "v-134.4" ] ],
-    [ "esp:25", "buzzer1:2", "red", [ "v-54.8", "h90" ] ],
-    [ "esp:25", "led1:A", "red", [ "v-54.8", "h86.4" ] ],
-    [ "esp:GND.1", "led1:C", "black", [ "v-12", "h38.4", "v-76.8", "h48" ] ],
-    [ "esp:26", "relay1:IN", "orange", [ "v-43.2", "h115.2" ] ],
-    [ "esp:GND.1", "relay1:GND", "black", [ "v-12", "h115.2", "v-57.6", "h38.4" ] ],
-    [ "esp:5V", "relay1:VCC", "red", [ "v28.8", "h86.4", "v-96", "h38.4" ] ],
-    [ "esp:27", "servo1:PWM", "yellow", [ "v-23", "h105.6", "v67.2" ] ],
-    [ "esp:5V", "servo1:V+", "red", [ "v28.8", "h76.8", "v19.2" ] ],
-    [ "esp:GND.2", "servo1:GND", "black", [ "v19.2", "h48" ] ]
-  ],
-  "dependencies": {}
-}
+[wokwi]
+version = 1
+firmware = ".pio/build/esp32dev/firmware.bin"
+elf = ".pio/build/esp32dev/firmware.elf"

@@ -10,15 +10,11 @@
 
 #define MQ2_PIN       13
 #define DS18B20_PIN   2
-
 #define RELAY_PIN     26
 #define BUZZER_PIN    15
-
 #define LED_GREEN     16
 #define LED_RED       17
-
 #define SERVO_PIN     33
-
 #define SDA_PIN       21
 #define SCL_PIN       19
 
@@ -65,18 +61,84 @@ bool temperatureAlarm = false;
 
 
 // =================================================
+// DS18B20 KHONG CHAN CHUONG TRINH
+// =================================================
+
+// Bien luu nhiet do hien tai
+float temperature = 25.0;
+
+// Thoi gian doc DS18B20
+unsigned long temperaturePreviousMillis = 0;
+
+// Chu ky cap nhat nhiet do
+const unsigned long temperatureInterval = 100;
+
+
+// =================================================
+// PHAN NHAP NHAY LED
+// =================================================
+
+// Thoi gian truoc do LED duoc doi trang thai
+unsigned long previousMillis = 0;
+
+// Trang thai hien tai cua LED do
+bool redLedState = false;
+
+
+// =================================================
+// TRANG THAI LCD
+// =================================================
+
+// Luu noi dung LCD hien tai
+String currentLine1 = "";
+String currentLine2 = "";
+
+
+// =================================================
 // HAM HIEN THI LCD
+// =================================================
+// Chi cap nhat LCD khi noi dung thay doi
+// Khong lcd.clear() lien tuc
 // =================================================
 
 void showLCD(String line1, String line2)
 {
-  lcd.clear();
+  if (line1 != currentLine1 || line2 != currentLine2)
+  {
+    currentLine1 = line1;
+    currentLine2 = line2;
 
-  lcd.setCursor(0, 0);
-  lcd.print(line1);
+    lcd.setCursor(0, 0);
+    lcd.print("                ");
 
-  lcd.setCursor(0, 1);
-  lcd.print(line2);
+    lcd.setCursor(0, 0);
+    lcd.print(line1);
+
+    lcd.setCursor(0, 1);
+    lcd.print("                ");
+
+    lcd.setCursor(0, 1);
+    lcd.print(line2);
+  }
+}
+
+
+// =================================================
+// HAM NHAP NHAY LED DO
+// =================================================
+
+void blinkRedLED(unsigned long blinkInterval)
+{
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - previousMillis >= blinkInterval)
+  {
+    previousMillis = currentMillis;
+
+    redLedState = !redLedState;
+
+    digitalWrite(LED_RED, redLedState);
+  }
 }
 
 
@@ -90,8 +152,13 @@ void normalState(float temperature, int gasValue)
   digitalWrite(LED_GREEN, HIGH);
   digitalWrite(LED_RED, LOW);
 
+  // Reset trang thai LED do
+  redLedState = false;
+  previousMillis = millis();
+
   // Tat coi
-  digitalWrite(BUZZER_PIN, LOW);
+  //digitalWrite(BUZZER_PIN, LOW);
+  noTone(BUZZER_PIN);
 
   // Tat relay
   digitalWrite(RELAY_PIN, LOW);
@@ -100,16 +167,14 @@ void normalState(float temperature, int gasValue)
   gasValve.write(0);
 
   // LCD
-  lcd.clear();
+  String line1 = "HE THONG AN TOAN";
 
-  lcd.setCursor(0, 0);
-  lcd.print("HE THONG AN TOAN");
+  String line2 = "T:";
+  line2 += String(temperature, 1);
+  line2 += "C G:";
+  line2 += String(gasValue);
 
-  lcd.setCursor(0, 1);
-  lcd.print("T:");
-  lcd.print(temperature, 1);
-  lcd.print("C G:");
-  lcd.print(gasValue);
+  showLCD(line1, line2);
 }
 
 
@@ -121,10 +186,14 @@ void gasAlarmState()
 {
   // LED
   digitalWrite(LED_GREEN, LOW);
-  digitalWrite(LED_RED, HIGH);
+
+  // LED DO CHOP 1 GIAY / LAN
+  // 500ms sang + 500ms tat
+  blinkRedLED(500);
 
   // Bat coi
-  digitalWrite(BUZZER_PIN, HIGH);
+  //digitalWrite(BUZZER_PIN, 2000);
+  tone(BUZZER_PIN, 2000);
 
   // Bat relay
   digitalWrite(RELAY_PIN, HIGH);
@@ -145,10 +214,14 @@ void temperatureAlarmState()
 {
   // LED
   digitalWrite(LED_GREEN, LOW);
-  digitalWrite(LED_RED, HIGH);
+
+  // LED DO CHOP 1 GIAY / LAN
+  // 500ms sang + 500ms tat
+  blinkRedLED(500);
 
   // Bat coi
-  digitalWrite(BUZZER_PIN, HIGH);
+  //digitalWrite(BUZZER_PIN, 2000);
+  tone(BUZZER_PIN, 2000);
 
   // Bat relay
   digitalWrite(RELAY_PIN, HIGH);
@@ -169,10 +242,14 @@ void dangerState()
 {
   // LED
   digitalWrite(LED_GREEN, LOW);
-  digitalWrite(LED_RED, HIGH);
+
+  // LED DO CHOP 0.5 GIAY / LAN
+  // 250ms sang + 250ms tat
+  blinkRedLED(250);
 
   // Bat coi
-  digitalWrite(BUZZER_PIN, HIGH);
+  //digitalWrite(BUZZER_PIN, 2000);
+  tone(BUZZER_PIN, 2000);
 
   // Bat relay
   digitalWrite(RELAY_PIN, HIGH);
@@ -193,6 +270,7 @@ void setup()
 {
   Serial.begin(115200);
 
+
   // -------------------------
   // Cau hinh chan
   // -------------------------
@@ -200,9 +278,11 @@ void setup()
   pinMode(MQ2_PIN, INPUT);
 
   pinMode(RELAY_PIN, OUTPUT);
+
   pinMode(BUZZER_PIN, OUTPUT);
 
   pinMode(LED_GREEN, OUTPUT);
+
   pinMode(LED_RED, OUTPUT);
 
 
@@ -227,6 +307,17 @@ void setup()
 
   temperatureSensor.begin();
 
+  // Cho phep DS18B20 do nhiet do
+  // ma khong dung chuong trinh
+  temperatureSensor.setResolution(9);
+
+  temperatureSensor.setWaitForConversion(false);
+
+  // Bat dau lan do dau tien
+  temperatureSensor.requestTemperatures();
+
+  temperaturePreviousMillis = millis();
+
 
   // -------------------------
   // SERVO
@@ -242,9 +333,12 @@ void setup()
   // -------------------------
 
   digitalWrite(RELAY_PIN, LOW);
-  digitalWrite(BUZZER_PIN, LOW);
+
+  //digitalWrite(BUZZER_PIN, LOW);
+  noTone(BUZZER_PIN);
 
   digitalWrite(LED_GREEN, HIGH);
+
   digitalWrite(LED_RED, LOW);
 
 
@@ -260,9 +354,15 @@ void setup()
   lcd.setCursor(0, 1);
   lcd.print("BAO GAS");
 
+  currentLine1 = "HE THONG CANH";
+  currentLine2 = "BAO GAS";
+
   delay(2000);
 
   lcd.clear();
+
+  currentLine1 = "";
+  currentLine2 = "";
 }
 
 
@@ -280,13 +380,19 @@ void loop()
 
 
   // =================================================
-  // DOC CAM BIEN DS18B20
+  // DOC DS18B20 KHONG CHAN CHUONG TRINH
   // =================================================
 
-  temperatureSensor.requestTemperatures();
+  if (millis() - temperaturePreviousMillis >= temperatureInterval)
+  {
+    temperaturePreviousMillis = millis();
 
-  float temperature =
-    temperatureSensor.getTempCByIndex(0);
+    // Lay ket qua cua lan do truoc
+    temperature = temperatureSensor.getTempCByIndex(0);
+
+    // Bat dau lan do moi
+    temperatureSensor.requestTemperatures();
+  }
 
 
   // =================================================
@@ -363,5 +469,7 @@ void loop()
   }
 
 
-  delay(1000);
+  // Cho chuong trinh chay lien tuc
+  // de LED nhap nhay dung toc do
+  delay(10);
 }
