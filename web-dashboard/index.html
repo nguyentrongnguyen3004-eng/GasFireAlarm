@@ -402,16 +402,34 @@
     let sseSource = null;
     let firebaseDb = null;
 
+    // ========================================================
+    // KHÔI PHỤC LỊCH SỬ ĐỒ THỊ TỪ LOCALSTORAGE (CHỐNG F5 RESET)
+    // ========================================================
+    let initLabels = [];
+    let initGasData = [];
+    let initTempData = [];
+    try {
+      const rawChart = localStorage.getItem('iot_chart_history');
+      if (rawChart) {
+        const parsed = JSON.parse(rawChart);
+        if (parsed && Array.isArray(parsed.labels) && parsed.labels.length > 0) {
+          initLabels = parsed.labels;
+          initGasData = parsed.gas || [];
+          initTempData = parsed.temp || [];
+        }
+      }
+    } catch(e) {}
+
     // Thiết lập Chart.js
     const ctx = document.getElementById('realtimeChart').getContext('2d');
     const chart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: Array(20).fill(''),
+        labels: initLabels,
         datasets: [
           {
             label: 'Khí Gas (ADC)',
-            data: Array(20).fill(400),
+            data: initGasData,
             borderColor: '#2563eb', // Xanh dương rõ nét
             backgroundColor: 'rgba(37, 99, 235, 0.12)',
             pointBackgroundColor: '#2563eb',
@@ -424,7 +442,7 @@
           },
           {
             label: 'Nhiệt độ (°C)',
-            data: Array(20).fill(28.0),
+            data: initTempData,
             borderColor: '#ef4444', // Đỏ tươi tương phản
             backgroundColor: 'rgba(239, 68, 68, 0.05)',
             pointBackgroundColor: '#ef4444',
@@ -441,7 +459,14 @@
         maintainAspectRatio: false,
         animation: { duration: 250 },
         scales: {
-          x: { grid: { color: currentTheme === 'dark' ? 'rgba(51, 65, 85, 0.2)' : 'rgba(203, 213, 225, 0.6)' } },
+          x: { 
+            grid: { color: currentTheme === 'dark' ? 'rgba(51, 65, 85, 0.2)' : 'rgba(203, 213, 225, 0.6)' },
+            ticks: {
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 8
+            }
+          },
           yGas: {
             type: 'linear',
             position: 'left',
@@ -463,6 +488,34 @@
       }
     });
 
+    function saveChartHistory() {
+      try {
+        localStorage.setItem('iot_chart_history', JSON.stringify({
+          labels: chart.data.labels,
+          gas: chart.data.datasets[0].data,
+          temp: chart.data.datasets[1].data
+        }));
+      } catch(e) {}
+    }
+
+    // Đồng bộ lịch sử đồ thị từ server nếu chưa có trong localStorage
+    async function syncChartHistoryFromServer() {
+      try {
+        const res = await fetch('/api/chart-history');
+        if (res.ok) {
+          const list = await res.json();
+          if (Array.isArray(list) && list.length > 0 && chart.data.labels.length < 5) {
+            chart.data.labels = list.map(item => item.time);
+            chart.data.datasets[0].data = list.map(item => item.gas);
+            chart.data.datasets[1].data = list.map(item => item.temp);
+            chart.update();
+            saveChartHistory();
+          }
+        }
+      } catch(e) {}
+    }
+    syncChartHistoryFromServer();
+
     // CẬP NHẬT TRẠNG THÁI TOÀN BỘ GIAO DIỆN TỪ DỮ LIỆU SENSOR
     function updateDashboard(data) {
       const gas = parseInt(data.gas || 0);
@@ -476,14 +529,27 @@
       document.getElementById('barGas').style.width = Math.min((gas / 4095) * 100, 100) + '%';
       document.getElementById('barTemp').style.width = Math.min((temp / 100) * 100, 100) + '%';
 
-      // Đẩy dữ liệu vào Đồ thị
-      chart.data.labels.shift();
-      chart.data.labels.push(new Date().toLocaleTimeString().split(' ')[0]);
-      chart.data.datasets[0].data.shift();
-      chart.data.datasets[0].data.push(gas);
-      chart.data.datasets[1].data.shift();
-      chart.data.datasets[1].data.push(temp);
-      chart.update();
+      // Đẩy dữ liệu vào Đồ thị (chống F5 reset, duy trì tối đa 25 điểm liên tục)
+      const nowTime = new Date().toLocaleTimeString('vi-VN');
+      const curLabels = chart.data.labels;
+      const lastLabel = curLabels[curLabels.length - 1];
+      const lastGas = chart.data.datasets[0].data[chart.data.datasets[0].data.length - 1];
+      const lastTemp = chart.data.datasets[1].data[chart.data.datasets[1].data.length - 1];
+
+      if (lastLabel !== nowTime || lastGas !== gas || lastTemp !== temp) {
+        chart.data.labels.push(nowTime);
+        chart.data.datasets[0].data.push(gas);
+        chart.data.datasets[1].data.push(temp);
+
+        while (chart.data.labels.length > 25) {
+          chart.data.labels.shift();
+          chart.data.datasets[0].data.shift();
+          chart.data.datasets[1].data.shift();
+        }
+
+        chart.update();
+        saveChartHistory();
+      }
 
       // Kiểm tra trạng thái van & quạt từ thiết bị (có khóa chống giật lùi UI)
       const now = Date.now();

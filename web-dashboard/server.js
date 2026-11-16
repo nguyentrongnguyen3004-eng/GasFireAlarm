@@ -67,6 +67,46 @@ function appendServerLog(msg, colorClass = "text-slate-500") {
 }
 
 // ========================================================
+// LƯU TRỮ LỊCH SỬ ĐỒ THỊ REAL-TIME (SURVIVES F5 & REBOOTS)
+// ========================================================
+const SENSOR_HISTORY_FILE = path.join(__dirname, 'sensor_history.json');
+let sensorHistory = [];
+try {
+  if (fs.existsSync(SENSOR_HISTORY_FILE)) {
+    sensorHistory = JSON.parse(fs.readFileSync(SENSOR_HISTORY_FILE, 'utf-8'));
+    if (!Array.isArray(sensorHistory)) sensorHistory = [];
+  }
+} catch (e) {
+  sensorHistory = [];
+}
+
+function recordSensorPoint(gas, temp) {
+  if (typeof gas === 'undefined' || typeof temp === 'undefined') return;
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('vi-VN');
+  
+  const last = sensorHistory[sensorHistory.length - 1];
+  // Tránh spam cùng mốc thời gian nếu giá trị không đổi
+  if (last && last.time === timeStr && last.gas === parseInt(gas) && Math.abs(last.temp - parseFloat(temp)) < 0.1) {
+    return;
+  }
+  
+  sensorHistory.push({
+    time: timeStr,
+    gas: parseInt(gas),
+    temp: parseFloat(Number(temp).toFixed(1))
+  });
+  
+  if (sensorHistory.length > 40) {
+    sensorHistory = sensorHistory.slice(-40);
+  }
+  
+  try {
+    fs.writeFileSync(SENSOR_HISTORY_FILE, JSON.stringify(sensorHistory, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+// ========================================================
 // TỰ ĐỘNG ĐỒNG BỘ 2 CHIỀU VỚI FIREBASE REALTIME DATABASE
 // ========================================================
 function fetchFirebaseData() {
@@ -101,6 +141,10 @@ function fetchFirebaseData() {
               changed = true;
               deviceState[key] = fbData[key];
             }
+          }
+
+          if (typeof fbData.gas !== 'undefined' && typeof fbData.temp !== 'undefined') {
+            recordSensorPoint(fbData.gas, fbData.temp);
           }
 
           if (changed) {
@@ -369,6 +413,9 @@ const server = http.createServer((req, res) => {
         for (let k in data) {
           pendingUserControls[k] = { value: data[k], timestamp: now };
         }
+        if (typeof data.gas !== 'undefined' && typeof data.temp !== 'undefined') {
+          recordSensorPoint(data.gas, data.temp);
+        }
         deviceState = { ...deviceState, ...data, lastUpdate: new Date().toISOString() };
 
         // Phát tín hiệu cập nhật cho các web đang mở
@@ -403,6 +450,9 @@ const server = http.createServer((req, res) => {
         for (let k in data) {
           pendingUserControls[k] = { value: data[k], timestamp: now };
         }
+        if (typeof data.gas !== 'undefined' && typeof data.temp !== 'undefined') {
+          recordSensorPoint(data.gas, data.temp);
+        }
         deviceState = { ...deviceState, ...data, lastUpdate: new Date().toISOString() };
 
         // Gửi sang cả Firebase để Wokwi cập nhật
@@ -426,6 +476,13 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/state' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(deviceState));
+    return;
+  }
+
+  // 4.1. API đọc lịch sử dữ liệu đồ thị (chống F5 mất dữ liệu)
+  if (url.pathname === '/api/chart-history' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(sensorHistory));
     return;
   }
 
