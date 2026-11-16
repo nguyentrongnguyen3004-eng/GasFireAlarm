@@ -1,0 +1,22 @@
+{
+  "name": "gas-fire-alarm-dashboard",
+  "version": "1.0.0",
+  "description": "Web Dashboard giám sát & điều khiển hệ thống cảnh báo rò rỉ khí gas và hỏa hoạn thông minh IoT",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  },
+  "keywords": [
+    "iot",
+    "esp32",
+    "firebase",
+    "dashboard",
+    "smart-gas-alarm"
+  ],
+  "author": "nguyentrongnguyen3004-eng",
+  "license": "MIT"
+}

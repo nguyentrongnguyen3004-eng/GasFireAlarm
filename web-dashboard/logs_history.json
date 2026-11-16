@@ -1,0 +1,82 @@
+[
+  {
+    "id": "1794821794266-b7iv",
+    "time": "16:36:34",
+    "date": "16/11/2026",
+    "msg": "[BÁO ĐỘNG ĐỎ] Khí gas: 3757, Nhiệt: 84.2°C -> Hệ thống tự động khóa van",
+    "colorClass": "text-red-500",
+    "timestamp": 1794821794266
+  },
+  {
+    "id": "1794821750937-lmvb",
+    "time": "16:35:50",
+    "date": "16/11/2026",
+    "msg": "[CẢNH BÁO] Rò rỉ gas: 3757 ADC | Nấu ăn: BẬT",
+    "colorClass": "text-amber-500",
+    "timestamp": 1794821750937
+  },
+  {
+    "id": "1794821743670-y2jc",
+    "time": "16:35:43",
+    "date": "16/11/2026",
+    "msg": "[CẢNH BÁO] Rò rỉ gas: 3360 ADC | Nấu ăn: BẬT",
+    "colorClass": "text-amber-500",
+    "timestamp": 1794821743670
+  },
+  {
+    "id": "1794821729254-yanw",
+    "time": "16:35:29",
+    "date": "16/11/2026",
+    "msg": "[CẢNH BÁO] Rò rỉ gas: 3628 ADC | Nấu ăn: BẬT",
+    "colorClass": "text-amber-500",
+    "timestamp": 1794821729254
+  },
+  {
+    "id": "1794821098802-habm",
+    "time": "16:24:58",
+    "date": "16/11/2026",
+    "msg": "[CẢNH BÁO] Rò rỉ gas: 3226 ADC | Nấu ăn: BẬT",
+    "colorClass": "text-amber-500",
+    "timestamp": 1794821098802
+  },
+  {
+    "id": "1794821053945-zl5a",
+    "time": "16:24:13",
+    "date": "16/11/2026",
+    "msg": "Đã bật chế độ 'Giờ nấu ăn' (Ngưỡng gas tự động tăng từ 2500 -> 3000 ADC)",
+    "colorClass": "text-amber-500 font-bold",
+    "timestamp": 1794821053945
+  },
+  {
+    "id": "1794820993247-vbno",
+    "time": "16:23:13",
+    "date": "16/11/2026",
+    "msg": "[CẢNH BÁO] Rò rỉ gas: 2893 ADC | Nấu ăn: TẮT",
+    "colorClass": "text-amber-500",
+    "timestamp": 1794820993247
+  },
+  {
+    "id": "1794820815695-zlf2",
+    "time": "16:20:15",
+    "date": "16/11/2026",
+    "msg": "[CẢNH BÁO] Rò rỉ gas: 3595 ADC | Nấu ăn: TẮT",
+    "colorClass": "text-amber-500",
+    "timestamp": 1794820815695
+  },
+  {
+    "id": "1794820800667-4r0s",
+    "time": "16:20:00",
+    "date": "16/11/2026",
+    "msg": "[CẢNH BÁO] Rò rỉ gas: 3628 ADC | Nấu ăn: TẮT",
+    "colorClass": "text-amber-500",
+    "timestamp": 1794820800667
+  },
+  {
+    "id": "1794820689504-kvna",
+    "time": "16:18:09",
+    "date": "16/11/2026",
+    "msg": "[HỆ THỐNG] Khởi tạo lưu trữ nhật ký vĩnh viễn",
+    "colorClass": "text-emerald-500",
+    "timestamp": 1794820689504
+  }
+]
