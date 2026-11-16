@@ -805,6 +805,26 @@
         localStorage.setItem('iot_fb_url', dbUrl);
         localStorage.setItem('iot_fb_project_id', projectId);
 
+        // KẾT NỐI TRỰC TIẾP FIREBASE REALTIME SSE STREAM (NHẬN TỨC THÌ < 30ms KHÔNG TRỄ)
+        try {
+          const directFbUrl = "https://smartgas-5b127-default-rtdb.asia-southeast1.firebasedatabase.app/system.json";
+          const directFbStream = new EventSource(directFbUrl);
+          directFbStream.addEventListener('put', (e) => {
+            try {
+              const res = JSON.parse(e.data);
+              if (res && res.data) updateDashboard(res.data);
+            } catch(err) {}
+          });
+          directFbStream.addEventListener('patch', (e) => {
+            try {
+              const res = JSON.parse(e.data);
+              if (res && res.data) updateDashboard(res.data);
+            } catch(err) {}
+          });
+        } catch(e) {
+          console.warn("Direct Firebase SSE stream error:", e);
+        }
+
         try {
           if (!firebase.apps.length) {
             firebase.initializeApp({

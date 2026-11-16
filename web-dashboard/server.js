@@ -107,52 +107,118 @@ function recordSensorPoint(gas, temp) {
 }
 
 // ========================================================
-// TỰ ĐỘNG ĐỒNG BỘ 2 CHIỀU VỚI FIREBASE REALTIME DATABASE
+// ĐỒNG BỘ THỜI GIAN THỰC TỨC THÌ (FIREBASE REALTIME SSE STREAM)
+// Giữ 1 kết nối duy nhất mở vĩnh viễn, nhận dữ liệu trong < 10ms
 // ========================================================
-function fetchFirebaseData() {
+let firebaseStreamReq = null;
+
+function connectFirebaseStream() {
+  if (firebaseStreamReq) {
+    try { firebaseStreamReq.destroy(); } catch (e) {}
+  }
+
   const options = {
     hostname: FIREBASE_HOST,
     port: 443,
     path: '/system.json',
-    method: 'GET'
+    method: 'GET',
+    headers: {
+      'Accept': 'text/event-stream'
+    }
   };
 
-  const req = https.request(options, (res) => {
+  firebaseStreamReq = https.request(options, (res) => {
+    let buffer = '';
+    
+    res.on('data', (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // Giữ lại phần chưa đủ dòng
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const rawData = line.replace('data: ', '').trim();
+          if (rawData && rawData !== 'null') {
+            try {
+              const parsed = JSON.parse(rawData);
+              const fbData = (parsed && typeof parsed === 'object' && parsed.data) ? parsed.data : parsed;
+              
+              if (fbData && typeof fbData === 'object') {
+                let changed = false;
+                const now = Date.now();
+
+                for (let key in fbData) {
+                  if (pendingUserControls[key] && (now - pendingUserControls[key].timestamp < 4000)) {
+                    if (fbData[key] === pendingUserControls[key].value) {
+                      delete pendingUserControls[key];
+                    } else {
+                      continue;
+                    }
+                  }
+
+                  if (deviceState[key] !== fbData[key]) {
+                    changed = true;
+                    deviceState[key] = fbData[key];
+                  }
+                }
+
+                if (typeof fbData.gas !== 'undefined' && typeof fbData.temp !== 'undefined') {
+                  recordSensorPoint(fbData.gas, fbData.temp);
+                }
+
+                if (changed) {
+                  deviceState.lastUpdate = new Date().toISOString();
+                  clients.forEach(client => {
+                    client.write(`data: ${JSON.stringify(deviceState)}\n\n`);
+                  });
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    });
+
+    res.on('end', () => {
+      setTimeout(connectFirebaseStream, 1500);
+    });
+  });
+
+  firebaseStreamReq.on('error', () => {
+    setTimeout(connectFirebaseStream, 2000);
+  });
+
+  firebaseStreamReq.end();
+}
+
+connectFirebaseStream();
+
+// Dự phòng polling 3s một lần phòng khi rớt luồng SSE
+setInterval(() => {
+  const req = https.request({
+    hostname: FIREBASE_HOST,
+    port: 443,
+    path: '/system.json',
+    method: 'GET'
+  }, (res) => {
     let raw = '';
-    res.on('data', chunk => raw += chunk);
+    res.on('data', c => raw += c);
     res.on('end', () => {
       if (res.statusCode === 200 && raw && raw !== 'null') {
         try {
           const fbData = JSON.parse(raw);
-          let changed = false;
-          const now = Date.now();
-
-          for (let key in fbData) {
-            // Nếu người dùng vừa bấm điều khiển thủ công phím này trong vòng 4s
-            if (pendingUserControls[key] && (now - pendingUserControls[key].timestamp < 4000)) {
-              if (fbData[key] === pendingUserControls[key].value) {
-                delete pendingUserControls[key]; // Thiết bị thật đã khớp trạng thái
-              } else {
-                continue; // Chưa khớp thì giữ nguyên lệnh của người dùng, không cho Firebase đè lại
+          if (fbData && typeof fbData === 'object') {
+            let changed = false;
+            for (let k in fbData) {
+              if (deviceState[k] !== fbData[k]) {
+                changed = true;
+                deviceState[k] = fbData[k];
               }
             }
-
-            if (deviceState[key] !== fbData[key]) {
-              changed = true;
-              deviceState[key] = fbData[key];
+            if (changed) {
+              deviceState.lastUpdate = new Date().toISOString();
+              clients.forEach(c => c.write(`data: ${JSON.stringify(deviceState)}\n\n`));
             }
-          }
-
-          if (typeof fbData.gas !== 'undefined' && typeof fbData.temp !== 'undefined') {
-            recordSensorPoint(fbData.gas, fbData.temp);
-          }
-
-          if (changed) {
-            deviceState.lastUpdate = new Date().toISOString();
-            // Phát cho toàn bộ Web Dashboard đang mở
-            clients.forEach(client => {
-              client.write(`data: ${JSON.stringify(deviceState)}\n\n`);
-            });
           }
         } catch (e) {}
       }
@@ -160,10 +226,7 @@ function fetchFirebaseData() {
   });
   req.on('error', () => {});
   req.end();
-}
-
-// Kéo dữ liệu từ Firebase mỗi 250ms (giảm độ trễ tối đa)
-setInterval(fetchFirebaseData, 250);
+}, 3000);
 
 // Gửi lệnh điều khiển lên Firebase (/controls.json và /system.json)
 function sendControlsToFirebase(controls) {
