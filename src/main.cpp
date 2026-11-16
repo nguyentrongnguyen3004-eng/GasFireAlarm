@@ -160,11 +160,17 @@ void sendToFirebaseCore0() {
     json += "\"cookingMode\":" + String(syncCookingMode ? "true" : "false");
     json += "}";
 
+    http.setReuse(true);
     int httpCode = http.PUT(json);
-    if (httpCode > 0) {
+    if (httpCode == 200) {
       Serial.printf("[Cloud] Dong bo OK! Gas=%d | Temp=%.1f C\n", syncGas, syncTemp);
+    } else {
+      Serial.printf("[Cloud] Thu lai vi HTTP=%d\n", httpCode);
+      needCloudSync = true;
     }
     http.end();
+  } else {
+    needCloudSync = true;
   }
   client.stop(); // Giải phóng RAM SSL ngay lập tức
 }
@@ -418,9 +424,9 @@ void loop() {
   // Kéo thanh trượt lệch >= 20 ADC là lập tức bắn lên Cloud ngay!
   // =================================================
   bool stateChanged = (gasAlarm != lastSentGasAlarm) || (temperatureAlarm != lastSentTempAlarm);
-  bool gasChanged = abs(gasValue - lastSentGas) >= 30; // Kéo thanh trượt gas lệch >= 30 ADC là gửi ngay
-  bool tempChanged = abs(temperature - lastSentTemp) >= 0.35; // Kéo nhiệt độ lệch >= 0.35°C là gửi ngay
-  bool heartbeatDue = (millis() - lastHeartbeat >= 12000); // 12s heartbeat duy trì khi đứng yên (chống nghẽn CPU Wokwi)
+  bool gasChanged = abs(gasValue - lastSentGas) >= 20; // Nhanh nhay: lech 20 ADC la gui ngay
+  bool tempChanged = abs(temperature - lastSentTemp) >= 0.25; // Nhanh nhay: lech 0.25 C la gui ngay
+  bool heartbeatDue = (millis() - lastHeartbeat >= 5000); // 5s heartbeat duy tri dinh ky
 
   if (stateChanged || gasChanged || tempChanged || heartbeatDue) {
     lastSentGas = gasValue;
