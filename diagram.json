@@ -80,7 +80,7 @@
     [ "led3:C", "esp:GND.2", "black", [ "v0" ] ],
     [ "gas1:VCC", "esp:5V", "red", [ "h38.4", "v8.7" ] ],
     [ "gas1:GND", "esp:GND.1", "black", [ "h38.4", "v-29.6" ] ],
-    [ "gas1:AOUT", "esp:13", "violet", [ "h0" ] ],
+    [ "gas1:AOUT", "esp:35", "violet", [ "v-30", "h350" ] ],
     [ "temp1:GND", "esp:GND.1", "black", [ "v48", "v124.8" ] ],
     [ "temp1:DQ", "esp:2", "gray", [ "v268.8", "h345.6", "v-86.4" ] ],
     [ "temp1:VCC", "esp:3V3", "orange", [ "v0" ] ],
