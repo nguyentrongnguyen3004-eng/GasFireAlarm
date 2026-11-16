@@ -248,7 +248,7 @@ void firebaseNetworkTask(void *pvParameters) {
 
     // 2. Đọc lệnh điều khiển từ Web: CHỈ đọc khi Core 0 rảnh (không có dữ liệu cảm biến chờ gửi)
     // và cách nhau 3.5 giây SAU KHI hoàn tất lần đọc trước (tránh nghẽn kênh SSL trên Wokwi)
-    if (!needCloudSync && (millis() - lastReadControls >= 3500)) {
+    if (!needCloudSync && (millis() - lastReadControls >= 6000)) {
       readControlsFromFirebaseCore0();
       lastReadControls = millis(); // Cập nhật mốc thời gian SAU KHI đọc xong
     }
@@ -326,7 +326,7 @@ void setup() {
   lcd.backlight();
 
   temperatureSensor.begin();
-  temperatureSensor.setResolution(12); // Nâng lên 12-bit để độ chính xác 0.06°C (khớp từng 0.1°C với Wokwi)
+  temperatureSensor.setResolution(10); // 10-bit: độ phân giải 0.25°C, chuyển đổi 187ms (nhanh gấp 4 lần 12-bit)
   temperatureSensor.setWaitForConversion(false);
   temperatureSensor.requestTemperatures();
   temperaturePreviousMillis = millis();
@@ -418,9 +418,9 @@ void loop() {
   // Kéo thanh trượt lệch >= 20 ADC là lập tức bắn lên Cloud ngay!
   // =================================================
   bool stateChanged = (gasAlarm != lastSentGasAlarm) || (temperatureAlarm != lastSentTempAlarm);
-  bool gasChanged = abs(gasValue - lastSentGas) >= 20; // Giảm từ 60 xuống 20 để cực kỳ nhạy khi kéo slider
-  bool tempChanged = abs(temperature - lastSentTemp) >= 0.25; // Giảm từ 0.8 xuống 0.25 độ C
-  bool heartbeatDue = (millis() - lastHeartbeat >= 1600); // 1.6s gửi duy trì định kỳ (giảm từ 3.5s)
+  bool gasChanged = abs(gasValue - lastSentGas) >= 30; // Kéo thanh trượt gas lệch >= 30 ADC là gửi ngay
+  bool tempChanged = abs(temperature - lastSentTemp) >= 0.35; // Kéo nhiệt độ lệch >= 0.35°C là gửi ngay
+  bool heartbeatDue = (millis() - lastHeartbeat >= 12000); // 12s heartbeat duy trì khi đứng yên (chống nghẽn CPU Wokwi)
 
   if (stateChanged || gasChanged || tempChanged || heartbeatDue) {
     lastSentGas = gasValue;
