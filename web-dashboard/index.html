@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Gas & Fire Alert System - IoT Dashboard</title>
+  
+  <!-- Tailwind CSS CDN với Dark Mode Class -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {}
+      }
+    }
+  </script>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Firebase App & Realtime Database CDN (v8 compat) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <!-- ExcelJS CDN (Xuất file Excel .xlsx đầy đủ màu sắc, tiêu đề và định dạng cao cấp) -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+
+  <style>
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+      50% { box-shadow: 0 0 30px rgba(239, 68, 68, 0.8); }
+    }
+    .danger-glow { animation: pulseGlow 1.5s infinite; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen font-sans p-4 md:p-6 transition-colors duration-300 selection:bg-orange-500 selection:text-white">
+
+  <!-- HEADER -->
+  <header class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center pb-6 border-b border-slate-200 dark:border-slate-800 gap-4">
+    <div class="flex items-center gap-3">
+      <span class="p-2.5 bg-red-500/20 text-red-500 dark:text-red-400 rounded-2xl border border-red-500/30 shadow-inner">
+        <i data-lucide="flame" class="w-8 h-8"></i>
+      </span>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-xl md:text-2xl font-black bg-gradient-to-r from-red-500 via-orange-400 to-amber-400 dark:from-red-400 dark:via-orange-300 dark:to-amber-200 bg-clip-text text-transparent">
+            HỆ THỐNG CẢNH BÁO RÒ RỈ GAS & CHÁY THÔNG MINH
+          </h1>
+          <span class="text-[10px] bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-semibold">ESP32 IoT</span>
+        </div>
+        <p class="text-xs text-slate-500 dark:text-slate-400">Đề tài IoT | ĐH Công Thương TP.HCM (HUIT) - Khoa CNTT | Nhóm 12</p>
+      </div>
+    </div>
+
+    <!-- Right controls: Sync badge, Cooking mode, Theme toggle, Settings -->
+    <div class="flex flex-wrap items-center gap-3">
+      <!-- Sync Source Badge -->
+      <div id="connBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse"></span>
+        <span id="connText">KẾT NỐI: CỤC BỘ (SSE)</span>
+      </div>
+
+      <!-- Smart Cooking Mode Button -->
+      <button id="btnCookingMode" onclick="toggleCookingMode()" class="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-semibold hover:bg-amber-500/20 transition">
+        <i data-lucide="utensils" class="w-3.5 h-3.5"></i>
+        <span id="txtCookingMode">Giờ Nấu Ăn: TẮT</span>
+      </button>
+
+      <!-- Theme Toggle (Light / Dark) -->
+      <button id="btnThemeToggle" onclick="toggleTheme()" class="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition shadow-sm" title="Chuyển chế độ Sáng / Tối">
+        <i id="themeIcon" data-lucide="sun" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Settings Button -->
+      <button onclick="openModal()" class="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 transition shadow-sm" title="Cấu hình kết nối Firebase / Local">
+        <i data-lucide="settings" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WRAPPER -->
+  <main class="max-w-7xl mx-auto mt-6 space-y-6">
+
+    <!-- HERO ALERT BANNER -->
+    <div id="alertBanner" class="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-500/40 dark:text-emerald-300 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg transition-all duration-300">
+      <div class="flex items-center gap-4">
+        <div id="alertIconWrap" class="p-3 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl">
+          <i id="alertIcon" data-lucide="shield-check" class="w-7 h-7"></i>
+        </div>
+        <div>
+          <h2 id="alertTitle" class="font-extrabold text-base md:text-xl">HỆ THỐNG AN TOÀN TUYỆT ĐỐI</h2>
+          <p id="alertDesc" class="text-xs md:text-sm text-emerald-700/80 dark:text-emerald-400/80">Cảm biến MQ-2 và DS18B20 hoạt động ổn định. Chưa phát hiện nguy cơ rò rỉ khí gas hoặc quá nhiệt.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 self-end md:self-center">
+        <span id="alertLevel" class="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+          AN TOÀN
+        </span>
+      </div>
+    </div>
+
+    <!-- GRID 3 CARDS: GAS, TEMP, ACTUATORS -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+      <!-- CARD 1: CẢM BIẾN GAS MQ-2 -->
+      <div class="bg-white border border-slate-200 dark:bg-slate-900/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
+        <div class="flex justify-between items-start">
+          <div>
+            <span class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Khí Gas (MQ-2)</span>
+            <p class="text-[11px] text-slate-400 dark:text-slate-500">Chân GPIO 35 (ADC1)</p>
+          </div>
+          <span class="p-2.5 bg-blue-500/10 text-blue-500 dark:text-blue-400 rounded-xl border border-blue-500/20">
+            <i data-lucide="wind" class="w-5 h-5"></i>
+          </span>
+        </div>
+
+        <div class="my-4">
+          <div class="flex items-baseline gap-2">
+            <span id="valGas" class="text-4xl md:text-5xl font-black tracking-tight text-slate-900 dark:text-white">420</span>
+            <span class="text-slate-400 text-sm font-semibold">ADC / PPM</span>
+          </div>
+          <!-- Progress bar -->
+          <div class="w-full bg-slate-200 dark:bg-slate-800 h-3 rounded-full mt-3 overflow-hidden p-0.5 border border-slate-300 dark:border-slate-700/50">
+            <div id="barGas" class="bg-gradient-to-r from-emerald-500 to-green-400 h-full rounded-full transition-all duration-300" style="width: 25%"></div>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <span>Ngưỡng kích hoạt: <b id="lblGasThresh" class="text-slate-700 dark:text-slate-200">2500</b></span>
+          <span id="lblGasStatus" class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold">An toàn</span>
+        </div>
+      </div>
+
+      <!-- CARD 2: CẢM BIẾN NHIỆT ĐỘ DS18B20 -->
+      <div class="bg-white border border-slate-200 dark:bg-slate-900/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
+        <div class="flex justify-between items-start">
+          <div>
+            <span class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Nhiệt độ (DS18B20)</span>
+            <p class="text-[11px] text-slate-400 dark:text-slate-500">Chân GPIO 2 (OneWire)</p>
+          </div>
+          <span class="p-2.5 bg-red-500/10 text-red-500 dark:text-red-400 rounded-xl border border-red-500/20">
+            <i data-lucide="thermometer" class="w-5 h-5"></i>
+          </span>
+        </div>
+
+        <div class="my-4">
+          <div class="flex items-baseline gap-2">
+            <span id="valTemp" class="text-4xl md:text-5xl font-black tracking-tight text-slate-900 dark:text-white">28.5</span>
+            <span class="text-slate-400 text-sm font-semibold">°C</span>
+          </div>
+          <!-- Progress bar -->
+          <div class="w-full bg-slate-200 dark:bg-slate-800 h-3 rounded-full mt-3 overflow-hidden p-0.5 border border-slate-300 dark:border-slate-700/50">
+            <div id="barTemp" class="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-300" style="width: 30%"></div>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <span>Ngưỡng báo cháy: <b id="lblTempThresh" class="text-slate-700 dark:text-slate-200">50.0 °C</b></span>
+          <span id="lblTempStatus" class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold">Ổn định</span>
+        </div>
+      </div>
+
+      <!-- CARD 3: CƠ CẤU CHẤP HÀNH & ĐIỀU KHIỂN 2 CHIỀU -->
+      <div class="bg-white border border-slate-200 dark:bg-slate-900/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
+        <div class="flex justify-between items-start mb-2">
+          <div>
+            <span class="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Cơ cấu chấp hành</span>
+            <p class="text-[11px] text-slate-400 dark:text-slate-500">Điều khiển 2 chiều Web ⇄ ESP32</p>
+          </div>
+          <span class="p-2.5 bg-blue-500/10 text-blue-500 dark:text-blue-400 rounded-xl border border-blue-500/20">
+            <i data-lucide="cpu" class="w-5 h-5"></i>
+          </span>
+        </div>
+
+        <div class="space-y-2.5 my-2">
+          <!-- Van Gas (Servo) -->
+          <div class="flex items-center justify-between p-2.5 bg-slate-100 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/40">
+            <div class="flex items-center gap-2.5">
+              <span class="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 dark:text-amber-400"><i data-lucide="lock" class="w-4 h-4"></i></span>
+              <div>
+                <p class="text-xs font-bold text-slate-800 dark:text-slate-200">Van Gas (Servo)</p>
+                <p id="txtValveStatus" class="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Đang Mở (0°)</p>
+              </div>
+            </div>
+            <button id="btnValve" onclick="toggleValve()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-300 hover:bg-red-500/20 border border-red-500/30 transition">
+              Khóa Van
+            </button>
+          </div>
+
+          <!-- Quạt hút khí (Relay) -->
+          <div class="flex items-center justify-between p-2.5 bg-slate-100 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/40">
+            <div class="flex items-center gap-2.5">
+              <span class="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"><i data-lucide="fan" class="w-4 h-4"></i></span>
+              <div>
+                <p class="text-xs font-bold text-slate-800 dark:text-slate-200">Quạt Hút Khí (Relay)</p>
+                <p id="txtFanStatus" class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Đang Tắt</p>
+              </div>
+            </div>
+            <button id="btnFan" onclick="toggleFan()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-cyan-500/10 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30 transition">
+              Bật Quạt
+            </button>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <span>Còi hú: <b id="lblBuzzer" class="text-emerald-600 dark:text-emerald-400">Im lặng</b></span>
+          <button onclick="testBeep()" class="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white underline">Âm thanh mẫu</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- REAL-TIME CHART -->
+    <div class="bg-white border border-slate-200 dark:bg-slate-900/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm dark:shadow-xl transition-colors">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+        <div>
+          <h3 class="font-bold text-slate-800 dark:text-slate-200 text-sm md:text-base flex items-center gap-2">
+            <i data-lucide="activity" class="w-4 h-4 text-blue-500 dark:text-blue-400"></i> Đồ thị Giám sát Thời gian thực (Real-time Stream)
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Trực quan hóa diễn biến nồng độ khí gas và nhiệt độ với ngưỡng ngắt</p>
+        </div>
+        <div class="flex items-center gap-4 text-xs font-medium">
+          <div class="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold">
+            <span class="w-3 h-3 rounded-full bg-blue-600 shadow-sm shadow-blue-500/50"></span> Khí Gas (ADC / PPM)
+          </div>
+          <div class="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold">
+            <span class="w-3 h-3 rounded-full bg-red-600 shadow-sm shadow-red-500/50"></span> Nhiệt độ (°C)
+          </div>
+        </div>
+      </div>
+      <div class="h-64 md:h-72 w-full">
+        <canvas id="realtimeChart"></canvas>
+      </div>
+    </div>
+
+    <!-- BOTTOM ROW: SETTINGS & INCIDENT LOGS -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <!-- CÀI ĐẶT NGƯỠNG ĐỘNG & NGHIỆP VỤ THÔNG MINH -->
+      <div class="bg-white border border-slate-200 dark:bg-slate-900/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
+        <div>
+          <h3 class="font-bold text-slate-800 dark:text-slate-200 mb-1 flex items-center gap-2 text-sm md:text-base">
+            <i data-lucide="sliders-horizontal" class="w-4 h-4 text-amber-500 dark:text-amber-400"></i> Cài đặt Ngưỡng Cảnh báo & Nghiệp vụ
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">Các giá trị cài đặt tại đây sẽ đồng bộ tức thời xuống mạch phần cứng ESP32</p>
+
+          <div class="space-y-4 text-sm">
+            <div>
+              <div class="flex justify-between mb-1.5">
+                <label class="text-xs text-slate-700 dark:text-slate-300 font-medium">Ngưỡng Gas Báo động (ADC):</label>
+                <span id="valGasThreshSlider" class="font-mono font-bold text-orange-600 dark:text-orange-400">2500</span>
+              </div>
+              <input type="range" min="1000" max="3500" step="50" value="2500" class="w-full accent-orange-500 cursor-pointer" oninput="updateGasThreshold(this.value)">
+              <div class="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                <span>1000 (Rất nhạy)</span>
+                <span>2000 (Trung bình)</span>
+                <span>3500 (Nguy cấp)</span>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex justify-between mb-1.5">
+                <label class="text-xs text-slate-700 dark:text-slate-300 font-medium">Ngưỡng Nhiệt độ Báo cháy (°C):</label>
+                <span id="valTempThreshSlider" class="font-mono font-bold text-red-600 dark:text-red-400">50.0 °C</span>
+              </div>
+              <input type="range" min="35" max="85" step="1" value="50" class="w-full accent-red-500 cursor-pointer" oninput="updateTempThreshold(this.value)">
+              <div class="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                <span>35°C</span>
+                <span>50°C (Tiêu chuẩn bếp)</span>
+                <span>85°C</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 p-3 rounded-xl bg-slate-100 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/40 text-[11px] text-slate-600 dark:text-slate-400">
+          <b class="text-slate-800 dark:text-slate-300">💡 Cơ chế Tối ưu Cảnh báo:</b> Khi bật <i>"Giờ Nấu Ăn"</i>, ngưỡng chịu đựng của cảm biến gas tự động tăng thêm <b>+500 ADC</b> để tránh còi hú phiền toái lúc xào nấu.
+        </div>
+      </div>
+
+      <!-- NHẬT KÝ SỰ CỐ (LOGS) -->
+      <div class="bg-white border border-slate-200 dark:bg-slate-900/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm dark:shadow-xl flex flex-col justify-between transition-colors">
+        <div>
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 text-sm md:text-base">
+              <i data-lucide="clipboard-list" class="w-4 h-4 text-cyan-600 dark:text-cyan-400"></i> Nhật ký Sự cố (Incident Logs)
+            </h3>
+            <button onclick="clearLogs()" class="text-xs text-slate-400 hover:text-red-500 transition">Xóa sạch</button>
+          </div>
+          <div id="logContainer" class="space-y-2 max-h-48 overflow-y-auto pr-1 text-xs text-slate-700 dark:text-slate-300 font-mono">
+            <div class="p-2 rounded bg-slate-100 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-800 flex justify-between items-center">
+              <span>[Khởi tạo] Hệ thống giám sát IoT đã sẵn sàng.</span>
+              <span class="text-emerald-600 dark:text-emerald-400 font-semibold">ONLINE</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs">
+          <span class="text-slate-400 dark:text-slate-500" id="logCount">1 sự kiện</span>
+          <button id="btnExportExcel" onclick="exportLogsExcel()" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition flex items-center gap-1.5 shadow-sm shadow-emerald-600/30">
+            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Xuất Báo Cáo Excel (.xlsx)
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- MODAL CẤU HÌNH KẾT NỐI (FIREBASE & SERVER) -->
+  <div id="cfgModal" class="fixed inset-0 bg-black/60 dark:bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
+        <h3 class="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+          <i data-lucide="database" class="w-5 h-5 text-orange-500"></i> Cấu hình Nguồn Dữ liệu
+        </h3>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-800 dark:hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Phương thức kết nối:</label>
+          <select id="selConnMode" class="w-full bg-slate-50 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 rounded-lg p-2.5" onchange="onConnModeChange()">
+            <option value="firebase">1. Firebase Realtime Database (Mặc định - Đồng bộ Cloud)</option>
+            <option value="sse">2. Localhost Server (SSE & REST API)</option>
+            <option value="simulation">3. Chế độ Mô phỏng (Demo không cần mạch)</option>
+          </select>
+        </div>
+
+        <div id="fbConfigGroup" class="space-y-2 hidden">
+          <div>
+            <label class="block text-slate-600 dark:text-slate-300 mb-0.5">Firebase Database URL:</label>
+            <input type="text" id="fbDbUrl" class="w-full bg-slate-50 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 rounded-lg p-2 font-mono text-[11px]" value="https://smartgas-5b127-default-rtdb.asia-southeast1.firebasedatabase.app">
+          </div>
+          <div>
+            <label class="block text-slate-600 dark:text-slate-300 mb-0.5">Firebase Project ID:</label>
+            <input type="text" id="fbProjectId" class="w-full bg-slate-50 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 rounded-lg p-2 font-mono text-[11px]" value="smartgas-5b127">
+          </div>
+          <div>
+            <label class="block text-slate-600 dark:text-slate-300 mb-0.5">API Key:</label>
+            <input type="text" id="fbApiKey" class="w-full bg-slate-50 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 rounded-lg p-2 font-mono text-[11px]" value="AIzaSyDdwXPHLgdv3gls8SVipNqzpzjrH6Sgs2M">
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+        <button onclick="closeModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 text-xs font-semibold">Đóng</button>
+        <button onclick="saveAndApplySettings()" class="px-4 py-2 rounded-lg bg-orange-500 text-white text-xs font-bold hover:bg-orange-600 transition">Lưu & Kết nối</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APP LOGIC -->
+  <script>
+    // Quản lý Giao diện Sáng / Tối
+    let currentTheme = localStorage.getItem('iot_theme') || 'dark';
+
+    function applyTheme(theme) {
+      currentTheme = theme;
+      const html = document.documentElement;
+      const icon = document.getElementById('themeIcon');
+      
+      if (theme === 'dark') {
+        html.classList.add('dark');
+        if (icon) icon.setAttribute('data-lucide', 'sun');
+        if (chart) {
+          chart.options.scales.x.grid.color = 'rgba(51, 65, 85, 0.2)';
+          chart.options.scales.yGas.grid.color = 'rgba(51, 65, 85, 0.15)';
+          chart.update();
+        }
+      } else {
+        html.classList.remove('dark');
+        if (icon) icon.setAttribute('data-lucide', 'moon');
+        if (chart) {
+          chart.options.scales.x.grid.color = 'rgba(203, 213, 225, 0.6)';
+          chart.options.scales.yGas.grid.color = 'rgba(203, 213, 225, 0.5)';
+          chart.update();
+        }
+      }
+      localStorage.setItem('iot_theme', theme);
+      lucide.createIcons();
+    }
+
+    function toggleTheme() {
+      applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+    }
+
+    // Biến trạng thái - Mặc định Firebase Cloud
+    let connMode = localStorage.getItem('iot_conn_mode') || 'firebase';
+    if (connMode !== 'firebase' && connMode !== 'simulation') {
+      connMode = 'firebase';
+      localStorage.setItem('iot_conn_mode', 'firebase');
+    }
+    let isCookingMode = false;
+    let isValveClosed = false;
+    let isFanActive = false;
+    let gasThreshold = 2500;
+    let tempThreshold = 50.0;
+    let logEntries = [];
+    let simInterval = null;
+    let sseSource = null;
+    let firebaseDb = null;
+
+    // ========================================================
+    // KHÔI PHỤC LỊCH SỬ ĐỒ THỊ TỪ LOCALSTORAGE (CHỐNG F5 RESET)
+    // ========================================================
+    let initLabels = [];
+    let initGasData = [];
+    let initTempData = [];
+    try {
+      const rawChart = localStorage.getItem('iot_chart_history');
+      if (rawChart) {
+        const parsed = JSON.parse(rawChart);
+        if (parsed && Array.isArray(parsed.labels) && parsed.labels.length > 0) {
+          initLabels = parsed.labels;
+          initGasData = parsed.gas || [];
+          initTempData = parsed.temp || [];
+        }
+      }
+    } catch(e) {}
+
+    // Thiết lập Chart.js
+    const ctx = document.getElementById('realtimeChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: initLabels,
+        datasets: [
+          {
+            label: 'Khí Gas (ADC)',
+            data: initGasData,
+            borderColor: '#2563eb', // Xanh dương rõ nét
+            backgroundColor: 'rgba(37, 99, 235, 0.12)',
+            pointBackgroundColor: '#2563eb',
+            pointBorderColor: '#ffffff',
+            pointRadius: 3,
+            tension: 0.35,
+            fill: true,
+            yAxisID: 'yGas',
+            borderWidth: 2.5
+          },
+          {
+            label: 'Nhiệt độ (°C)',
+            data: initTempData,
+            borderColor: '#ef4444', // Đỏ tươi tương phản
+            backgroundColor: 'rgba(239, 68, 68, 0.05)',
+            pointBackgroundColor: '#ef4444',
+            pointBorderColor: '#ffffff',
+            pointRadius: 3,
+            tension: 0.35,
+            yAxisID: 'yTemp',
+            borderWidth: 2.5
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 250 },
+        scales: {
+          x: { 
+            grid: { color: currentTheme === 'dark' ? 'rgba(51, 65, 85, 0.2)' : 'rgba(203, 213, 225, 0.6)' },
+            ticks: {
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 8
+            }
+          },
+          yGas: {
+            type: 'linear',
+            position: 'left',
+            min: 0,
+            max: 4095,
+            grid: { color: currentTheme === 'dark' ? 'rgba(51, 65, 85, 0.15)' : 'rgba(203, 213, 225, 0.5)' },
+            ticks: { color: '#2563eb', font: { weight: 'bold' } }
+          },
+          yTemp: {
+            type: 'linear',
+            position: 'right',
+            min: 0,
+            max: 100,
+            grid: { drawOnChartArea: false },
+            ticks: { color: '#ef4444', font: { weight: 'bold' } }
+          }
+        },
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    function saveChartHistory() {
+      try {
+        localStorage.setItem('iot_chart_history', JSON.stringify({
+          labels: chart.data.labels,
+          gas: chart.data.datasets[0].data,
+          temp: chart.data.datasets[1].data
+        }));
+      } catch(e) {}
+    }
+
+    // Đồng bộ lịch sử đồ thị từ server nếu chưa có trong localStorage
+    async function syncChartHistoryFromServer() {
+      try {
+        const res = await fetch('/api/chart-history');
+        if (res.ok) {
+          const list = await res.json();
+          if (Array.isArray(list) && list.length > 0 && chart.data.labels.length < 5) {
+            chart.data.labels = list.map(item => item.time);
+            chart.data.datasets[0].data = list.map(item => item.gas);
+            chart.data.datasets[1].data = list.map(item => item.temp);
+            chart.update();
+            saveChartHistory();
+          }
+        }
+      } catch(e) {}
+    }
+    syncChartHistoryFromServer();
+
+    // CẬP NHẬT TRẠNG THÁI TOÀN BỘ GIAO DIỆN TỪ DỮ LIỆU SENSOR
+    function updateDashboard(data) {
+      const gas = parseInt(data.gas || 0);
+      let temp = parseFloat(data.temp || 0);
+      if (temp <= -100) temp = 28.0; // Bo qua gia tri loi -127C cua DS18B20 khi khoi dong
+
+      document.getElementById('valGas').innerText = gas;
+      document.getElementById('valTemp').innerText = temp.toFixed(1);
+
+      // Thanh tiến trình
+      document.getElementById('barGas').style.width = Math.min((gas / 4095) * 100, 100) + '%';
+      document.getElementById('barTemp').style.width = Math.min((temp / 100) * 100, 100) + '%';
+
+      // Đẩy dữ liệu vào Đồ thị (chống F5 reset, duy trì tối đa 25 điểm liên tục)
+      const nowTime = new Date().toLocaleTimeString('vi-VN');
+      const curLabels = chart.data.labels;
+      const lastLabel = curLabels[curLabels.length - 1];
+      const lastGas = chart.data.datasets[0].data[chart.data.datasets[0].data.length - 1];
+      const lastTemp = chart.data.datasets[1].data[chart.data.datasets[1].data.length - 1];
+
+      if (lastLabel !== nowTime || lastGas !== gas || lastTemp !== temp) {
+        chart.data.labels.push(nowTime);
+        chart.data.datasets[0].data.push(gas);
+        chart.data.datasets[1].data.push(temp);
+
+        while (chart.data.labels.length > 25) {
+          chart.data.labels.shift();
+          chart.data.datasets[0].data.shift();
+          chart.data.datasets[1].data.shift();
+        }
+
+        chart.update();
+        saveChartHistory();
+      }
+
+      // Kiểm tra trạng thái van & quạt từ thiết bị (có khóa chống giật lùi UI)
+      const now = Date.now();
+      if (typeof data.valveClosed !== 'undefined') {
+        if (!pendingUIControls['valveClosed'] || (now - pendingUIControls['valveClosed'].time > 4000) || data.valveClosed === pendingUIControls['valveClosed'].val) {
+          setValveUI(data.valveClosed);
+          delete pendingUIControls['valveClosed'];
+        }
+      }
+      if (typeof data.fanActive !== 'undefined') {
+        if (!pendingUIControls['fanActive'] || (now - pendingUIControls['fanActive'].time > 4000) || data.fanActive === pendingUIControls['fanActive'].val) {
+          setFanUI(data.fanActive);
+          delete pendingUIControls['fanActive'];
+        }
+      }
+
+      // Xử lý Logic Cảnh báo
+      const activeGasThresh = isCookingMode ? (gasThreshold + 500) : gasThreshold;
+      const isGasDanger = gas >= activeGasThresh;
+      const isTempDanger = temp >= tempThreshold;
+
+      const banner = document.getElementById('alertBanner');
+      const title = document.getElementById('alertTitle');
+      const desc = document.getElementById('alertDesc');
+      const level = document.getElementById('alertLevel');
+      const iconWrap = document.getElementById('alertIconWrap');
+      const bzLabel = document.getElementById('lblBuzzer');
+
+      if (isGasDanger && isTempDanger) {
+        banner.className = "p-5 rounded-2xl bg-red-500/15 border border-red-500 text-red-900 dark:bg-red-950/70 dark:border-red-500 dark:text-red-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl danger-glow";
+        iconWrap.className = "p-3 bg-red-500/20 text-red-600 dark:text-red-400 rounded-xl";
+        title.innerText = "NGUY HIỂM CẤP ĐỘ CAO NHẤT: CHÁY & RÒ RỈ GAS!";
+        desc.innerText = `Nồng độ gas (${gas}) và nhiệt độ (${temp}°C) đều vượt ngưỡng an toàn. Khóa van và hút gió ngay lập tức!`;
+        level.innerText = "KHẨN CẤP";
+        level.className = "text-xs px-3 py-1.5 rounded-lg bg-red-500/30 border border-red-500 font-bold uppercase tracking-wider text-red-700 dark:text-red-200";
+        bzLabel.innerText = "HÚ GẮT (2500Hz)";
+        bzLabel.className = "text-red-600 dark:text-red-400 font-bold";
+        addLog(`[BÁO ĐỘNG ĐỎ] Khí gas: ${gas}, Nhiệt: ${temp}°C -> Hệ thống tự động khóa van`, 'text-red-500');
+      } 
+      else if (isGasDanger) {
+        banner.className = "p-5 rounded-2xl bg-amber-500/15 border border-amber-500/50 text-amber-900 dark:bg-amber-950/60 dark:border-amber-500/50 dark:text-amber-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl";
+        iconWrap.className = "p-3 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl";
+        title.innerText = isCookingMode ? "GAS DƯ THỪA (CHẾ ĐỘ NẤU ĂN)" : "CẢNH BÁO: RÒ RỈ KHÍ GAS BẤT THƯỜNG";
+        desc.innerText = isCookingMode ? "Hệ thống ghi nhận nồng độ tăng trong giờ sinh hoạt. Không khóa van đột ngột." : `Phát hiện rò rỉ khí gas ngoài giờ nấu (${gas} ADC). Quạt hút đang được kích hoạt.`;
+        level.innerText = isCookingMode ? "CHÚ Ý" : "CẢNH BÁO";
+        level.className = "text-xs px-3 py-1.5 rounded-lg bg-amber-500/30 border border-amber-500 font-bold uppercase tracking-wider text-amber-700 dark:text-amber-200";
+        bzLabel.innerText = isCookingMode ? "Tắt âm nấu" : "HÚ BÁO (2000Hz)";
+        bzLabel.className = isCookingMode ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-amber-600 dark:text-amber-400 font-bold";
+        addLog(`[CẢNH BÁO] Rò rỉ gas: ${gas} ADC | Nấu ăn: ${isCookingMode ? 'BẬT' : 'TẮT'}`, 'text-amber-500');
+      } 
+      else if (isTempDanger) {
+        banner.className = "p-5 rounded-2xl bg-red-500/10 border border-red-500/40 text-red-800 dark:bg-red-950/50 dark:border-red-500/40 dark:text-red-300 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl";
+        iconWrap.className = "p-3 bg-red-500/20 text-red-600 dark:text-red-400 rounded-xl";
+        title.innerText = "CẢNH BÁO: NHIỆT ĐỘ KHU VỰC TĂNG CAO";
+        desc.innerText = `Nhiệt độ hiện tại ${temp}°C đã vượt ngưỡng cài đặt (${tempThreshold}°C). Cảnh giác nguy cơ cháy.`;
+        level.innerText = "NHIỆT CAO";
+        level.className = "text-xs px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/30 font-bold uppercase tracking-wider text-red-700 dark:text-red-300";
+        bzLabel.innerText = "HÚ NHIỆT (2000Hz)";
+        bzLabel.className = "text-red-600 dark:text-red-400 font-bold";
+      } 
+      else {
+        banner.className = "p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-500/40 dark:text-emerald-300 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg";
+        iconWrap.className = "p-3 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl";
+        title.innerText = "HỆ THỐNG AN TOÀN TUYỆT ĐỐI";
+        desc.innerText = "Cảm biến MQ-2 và DS18B20 hoạt động ổn định. Mọi thông số an toàn.";
+        level.innerText = "AN TOÀN";
+        level.className = "text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300";
+        bzLabel.innerText = "Im lặng";
+        bzLabel.className = "text-emerald-600 dark:text-emerald-400 font-semibold";
+      }
+
+      // CẬP NHẬT TRẠNG THÁI & MÀU SẮC RIÊNG CỦA TỪNG CARD CẢM BIẾN
+      const lblGasStatus = document.getElementById('lblGasStatus');
+      const barGas = document.getElementById('barGas');
+      if (lblGasStatus && barGas) {
+        if (isGasDanger) {
+          lblGasStatus.innerText = "NGUY HIỂM";
+          lblGasStatus.className = "px-2 py-0.5 rounded bg-red-500/20 text-red-600 dark:text-red-400 font-bold animate-pulse";
+          barGas.className = "bg-gradient-to-r from-red-500 to-rose-600 h-full rounded-full transition-all duration-300";
+        } else if (gas >= (activeGasThresh - 400)) {
+          lblGasStatus.innerText = "Cảnh giác";
+          lblGasStatus.className = "px-2 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold";
+          barGas.className = "bg-gradient-to-r from-amber-500 to-orange-500 h-full rounded-full transition-all duration-300";
+        } else {
+          lblGasStatus.innerText = "An toàn";
+          lblGasStatus.className = "px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold";
+          barGas.className = "bg-gradient-to-r from-emerald-500 to-green-400 h-full rounded-full transition-all duration-300";
+        }
+      }
+
+      const lblTempStatus = document.getElementById('lblTempStatus');
+      const barTemp = document.getElementById('barTemp');
+      if (lblTempStatus && barTemp) {
+        if (isTempDanger) {
+          lblTempStatus.innerText = "QUÁ NHIỆT";
+          lblTempStatus.className = "px-2 py-0.5 rounded bg-red-500/20 text-red-600 dark:text-red-400 font-bold animate-pulse";
+          barTemp.className = "bg-gradient-to-r from-red-500 to-rose-600 h-full rounded-full transition-all duration-300";
+        } else if (temp >= (tempThreshold - 5.0)) {
+          lblTempStatus.innerText = "Nhiệt cao";
+          lblTempStatus.className = "px-2 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold";
+          barTemp.className = "bg-gradient-to-r from-amber-500 to-orange-500 h-full rounded-full transition-all duration-300";
+        } else {
+          lblTempStatus.innerText = "Ổn định";
+          lblTempStatus.className = "px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold";
+          barTemp.className = "bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-300";
+        }
+      }
+    }
+
+    // ĐIỀU KHIỂN VAN VÀ QUẠT
+    function setValveUI(closed) {
+      isValveClosed = closed;
+      const btn = document.getElementById('btnValve');
+      const txt = document.getElementById('txtValveStatus');
+      if (isValveClosed) {
+        btn.innerText = "Mở Van";
+        btn.className = "px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 transition";
+        txt.innerText = "Đã Khóa (90°)";
+        txt.className = "text-[11px] text-red-600 dark:text-red-400 font-bold";
+      } else {
+        btn.innerText = "Khóa Van";
+        btn.className = "px-3 py-1.5 text-xs font-bold rounded-lg bg-red-500/15 text-red-700 dark:bg-red-500/20 dark:text-red-300 hover:bg-red-500/30 border border-red-500/40 transition";
+        txt.innerText = "Đang Mở (0°)";
+        txt.className = "text-[11px] text-emerald-600 dark:text-emerald-400 font-medium";
+      }
+    }
+
+    function setFanUI(active) {
+      isFanActive = active;
+      const btn = document.getElementById('btnFan');
+      const txt = document.getElementById('txtFanStatus');
+      if (isFanActive) {
+        btn.innerText = "Tắt Quạt";
+        btn.className = "px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 transition";
+        txt.innerText = "Đang Bật (Hút khí)";
+        txt.className = "text-[11px] text-cyan-600 dark:text-cyan-400 font-bold";
+      } else {
+        btn.innerText = "Bật Quạt";
+        btn.className = "px-3 py-1.5 text-xs font-bold rounded-lg bg-cyan-500/15 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/40 transition";
+        txt.innerText = "Đang Tắt";
+        txt.className = "text-[11px] text-slate-500 dark:text-slate-400 font-medium";
+      }
+    }
+
+    let pendingUIControls = {};
+
+    function toggleValve() {
+      const nextState = !isValveClosed;
+      setValveUI(nextState);
+      pendingUIControls['valveClosed'] = { val: nextState, time: Date.now() };
+      sendControlCommand({ valveClosed: nextState });
+      addLog(`[LỆNH ĐIỀU KHIỂN] Người dùng ${nextState ? 'KHÓA VAN GAS (Servo 90°)' : 'MỞ LẠI VAN GAS (Servo 0°)'}`, 'text-cyan-600 dark:text-cyan-300 font-bold');
+    }
+
+    function toggleFan() {
+      const nextState = !isFanActive;
+      setFanUI(nextState);
+      pendingUIControls['fanActive'] = { val: nextState, time: Date.now() };
+      sendControlCommand({ fanActive: nextState });
+      addLog(`[LỆNH ĐIỀU KHIỂN] Người dùng ${nextState ? 'BẬT QUẠT HÚT KHÍ (Relay ON)' : 'TẮT QUẠT HÚT (Relay OFF)'}`, 'text-cyan-600 dark:text-cyan-300 font-bold');
+    }
+
+    function updateThresholdDisplays() {
+      const activeThresh = isCookingMode ? (gasThreshold + 500) : gasThreshold;
+      const lblGas = document.getElementById('lblGasThresh');
+      const valSlider = document.getElementById('valGasThreshSlider');
+      if (isCookingMode) {
+        lblGas.innerHTML = `${activeThresh} <span class="text-amber-500 font-bold text-[10px] bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/30">+500 Nấu</span>`;
+        valSlider.innerHTML = `${activeThresh} <span class="text-xs font-semibold text-amber-500">(Gốc ${gasThreshold} + 500 Nấu ăn)</span>`;
+      } else {
+        lblGas.innerText = gasThreshold;
+        valSlider.innerText = gasThreshold;
+      }
+    }
+
+    function toggleCookingMode() {
+      isCookingMode = !isCookingMode;
+      const btn = document.getElementById('btnCookingMode');
+      const txt = document.getElementById('txtCookingMode');
+      if (isCookingMode) {
+        btn.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500 border border-amber-400 text-slate-950 text-xs font-bold transition shadow-md shadow-amber-500/30";
+        txt.innerText = "Giờ Nấu Ăn: ĐANG BẬT";
+        addLog("Đã bật chế độ 'Giờ nấu ăn' (Ngưỡng gas tự động tăng từ 2500 -> 3000 ADC)", "text-amber-500 font-bold");
+      } else {
+        btn.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-semibold hover:bg-amber-500/20 transition";
+        txt.innerText = "Giờ Nấu Ăn: TẮT";
+        addLog("Đã tắt chế độ 'Giờ nấu ăn'. Áp dụng ngưỡng giám sát nghiêm ngặt 2500 ADC.", "text-slate-400");
+      }
+      updateThresholdDisplays();
+      pendingUIControls['cookingMode'] = { val: isCookingMode, time: Date.now() };
+      sendControlCommand({ cookingMode: isCookingMode });
+
+      // Cập nhật lại giao diện ngay với ngưỡng mới
+      const currentGas = parseInt(document.getElementById('valGas').innerText || 0);
+      const currentTemp = parseFloat(document.getElementById('valTemp').innerText || 0);
+      updateDashboard({ gas: currentGas, temp: currentTemp });
+    }
+
+    function updateGasThreshold(val) {
+      gasThreshold = parseInt(val);
+      updateThresholdDisplays();
+      sendControlCommand({ gasThreshold: gasThreshold });
+      addLog(`[CÀI ĐẶT] Ngưỡng gas báo động: ${gasThreshold} ADC`, "text-orange-500");
+    }
+
+    function updateTempThreshold(val) {
+      tempThreshold = parseFloat(val);
+      document.getElementById('valTempThreshSlider').innerText = val + " °C";
+      document.getElementById('lblTempThresh').innerText = val + " °C";
+      sendControlCommand({ tempThreshold: tempThreshold });
+      addLog(`[CÀI ĐẶT] Ngưỡng nhiệt báo cháy: ${tempThreshold} °C`, "text-red-500");
+    }
+
+    // GỬI LỆNH ĐIỀU KHIỂN XUỐNG THIẾT BỊ (ĐỒNG THỜI GỬI SERVER & FIREBASE)
+    function sendControlCommand(payload) {
+      if (firebaseDb) {
+        try {
+          firebaseDb.ref('controls').update(payload);
+          firebaseDb.ref('system').update(payload);
+        } catch(e) {}
+      }
+      fetch('/api/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(err => console.error("Control API Error:", err));
+    }
+
+    // QUẢN LÝ KẾT NỐI (FIREBASE VÀ BACKUP SSE)
+    function initConnection() {
+      const badge = document.getElementById('connBadge');
+      const text = document.getElementById('connText');
+
+      if (simInterval) clearInterval(simInterval);
+
+      // 1. Luôn kết nối Server-Sent Events từ Server Node.js (Server tự động đồng bộ từ Firebase)
+      if (!sseSource) {
+        sseSource = new EventSource('/api/events');
+        sseSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            updateDashboard(data);
+          } catch(e) {}
+        };
+      }
+
+      if (connMode === 'firebase') {
+        badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-600 dark:text-orange-400 text-xs font-semibold";
+        text.innerText = "KẾT NỐI: FIREBASE REALTIME";
+
+        const dbUrl = "https://smartgas-5b127-default-rtdb.asia-southeast1.firebasedatabase.app";
+        const projectId = "smartgas-5b127";
+        localStorage.setItem('iot_fb_url', dbUrl);
+        localStorage.setItem('iot_fb_project_id', projectId);
+
+        // KẾT NỐI TRỰC TIẾP FIREBASE REALTIME SSE STREAM (NHẬN TỨC THÌ < 30ms KHÔNG TRỄ)
+        try {
+          const directFbUrl = "https://smartgas-5b127-default-rtdb.asia-southeast1.firebasedatabase.app/system.json";
+          const directFbStream = new EventSource(directFbUrl);
+          directFbStream.addEventListener('put', (e) => {
+            try {
+              const res = JSON.parse(e.data);
+              if (res && res.data) updateDashboard(res.data);
+            } catch(err) {}
+          });
+          directFbStream.addEventListener('patch', (e) => {
+            try {
+              const res = JSON.parse(e.data);
+              if (res && res.data) updateDashboard(res.data);
+            } catch(err) {}
+          });
+        } catch(e) {
+          console.warn("Direct Firebase SSE stream error:", e);
+        }
+
+        try {
+          if (!firebase.apps.length) {
+            firebase.initializeApp({
+              databaseURL: dbUrl,
+              projectId: projectId
+            });
+          }
+          firebaseDb = firebase.database();
+
+          firebaseDb.ref('system').on('value', (snap) => {
+            const val = snap.val();
+            if (val) updateDashboard(val);
+          });
+        } catch(e) {
+          console.warn("Firebase JS init fallback to SSE:", e);
+        }
+      } 
+      else if (connMode === 'sse') {
+        badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold";
+        text.innerText = "KẾT NỐI: CỤC BỘ (SSE / REST)";
+      }
+      else { // simulation
+        badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-600 dark:text-purple-400 text-xs font-semibold";
+        text.innerText = "CHẾ ĐỘ: MÔ PHỎNG (TEST)";
+        
+        simInterval = setInterval(() => {
+          const simGas = Math.floor(400 + Math.random() * 250);
+          const simTemp = 28.0 + Math.random() * 1.5;
+          updateDashboard({ gas: simGas, temp: simTemp });
+        }, 1500);
+      }
+    }
+
+    // ========================================================
+    // QUẢN LÝ NHẬT KÝ SỰ CỐ VĨNH VIỄN (F5 KHÔNG MẤT - LOCALSTORAGE & SERVER)
+    // ========================================================
+    function renderLogItem(item, prepend = true) {
+      const container = document.getElementById('logContainer');
+      const div = document.createElement('div');
+      div.className = "p-2 rounded bg-slate-100 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-800 flex justify-between items-center transition";
+      div.innerHTML = `<span>[${item.time}] ${item.msg}</span><span class="${item.colorClass || 'text-slate-500'} font-bold text-[10px]">REC</span>`;
+      if (prepend && container.firstChild) {
+        container.insertBefore(div, container.firstChild);
+      } else {
+        container.appendChild(div);
+      }
+    }
+
+    function cleanLogMsg(str) {
+      if (!str) return '';
+      if (str.includes('H?') || str.includes('TH?NG') || str.includes('Kh?i') || str.includes('\uFFFD') || str.includes('nh?t k')) {
+        return '[HỆ THỐNG] Khởi tạo lưu trữ nhật ký vĩnh viễn';
+      }
+      return str;
+    }
+
+    function loadPersistedLogs() {
+      // 1. Đọc ngay từ localStorage để hiển thị tức thì (0ms)
+      const local = localStorage.getItem('iot_incident_logs');
+      if (local) {
+        try {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            logEntries = parsed.map(item => ({ ...item, msg: cleanLogMsg(item.msg) }));
+            localStorage.setItem('iot_incident_logs', JSON.stringify(logEntries));
+            const container = document.getElementById('logContainer');
+            container.innerHTML = '';
+            logEntries.forEach(item => renderLogItem(item, false));
+            document.getElementById('logCount').innerText = `${logEntries.length} sự kiện`;
+          }
+        } catch(e) {}
+      }
+
+      // 2. Kéo nhật ký lịch sử từ Server để bổ sung bất kỳ sự kiện nào xảy ra lúc đóng web
+      fetch('/api/logs')
+        .then(res => res.json())
+        .then(serverLogs => {
+          if (Array.isArray(serverLogs) && serverLogs.length > 0) {
+            const existingSet = new Set(logEntries.map(e => e.time + '-' + e.msg));
+            let updated = false;
+            serverLogs.forEach(sItem => {
+              sItem.msg = cleanLogMsg(sItem.msg);
+              const key = sItem.time + '-' + sItem.msg;
+              if (!existingSet.has(key)) {
+                logEntries.push(sItem);
+                existingSet.add(key);
+                updated = true;
+              }
+            });
+            if (updated) {
+              localStorage.setItem('iot_incident_logs', JSON.stringify(logEntries.slice(0, 150)));
+              const container = document.getElementById('logContainer');
+              container.innerHTML = '';
+              logEntries.forEach(item => renderLogItem(item, false));
+              document.getElementById('logCount').innerText = `${logEntries.length} sự kiện`;
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
+    function addLog(msg, colorClass = "text-slate-500 dark:text-slate-300") {
+      const time = new Date().toLocaleTimeString();
+      // Chống spam ghi lặp liên tục cùng 1 nội dung trong vài giây
+      if (logEntries.length > 0 && logEntries[0].msg === msg) {
+        return;
+      }
+
+      const item = { time, msg, colorClass };
+      renderLogItem(item, true);
+      logEntries.unshift(item);
+      if (logEntries.length > 150) logEntries.pop();
+      document.getElementById('logCount').innerText = `${logEntries.length} sự kiện`;
+
+      // Lưu ngay vào localStorage (F5 / tải lại trang vẫn còn 100%)
+      localStorage.setItem('iot_incident_logs', JSON.stringify(logEntries));
+
+      // Lưu đồng bộ lên Server
+      fetch('/api/logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item)
+      }).catch(() => {});
+    }
+
+    function clearLogs() {
+      if (logEntries.length === 0) return;
+      if (!confirm("Bạn có chắc chắn muốn xóa sạch toàn bộ lịch sử nhật ký sự cố không?")) {
+        return;
+      }
+      document.getElementById('logContainer').innerHTML = `
+        <div class="p-2 rounded bg-slate-100 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-800 flex justify-between items-center text-slate-400">
+          <span>[Làm mới] Nhật ký sự cố đã được xóa sạch.</span>
+          <span class="text-emerald-600 dark:text-emerald-400 font-semibold">CLEAR</span>
+        </div>
+      `;
+      logEntries = [];
+      localStorage.removeItem('iot_incident_logs');
+      document.getElementById('logCount').innerText = "0 sự kiện";
+
+      fetch('/api/logs', { method: 'DELETE' }).catch(() => {});
+    }
+    // XUẤT BÁO CÁO NHẬT KÝ ĐỊNH DẠNG MICROSOFT EXCEL (.XLSX) CAO CẤP
+    async function exportLogsExcel() {
+      if (logEntries.length === 0) {
+        alert("Chưa có sự kiện nào trong nhật ký để xuất báo cáo!");
+        return;
+      }
+
+      const btn = document.getElementById('btnExportExcel');
+      const originalHtml = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.innerHTML = `<span class="inline-block animate-spin mr-1">⌛</span> Đang kết xuất...`;
+        btn.disabled = true;
+      }
+
+      const fileName = `BaoCao_HeThongGasChay_HUIT_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+      // 1. ƯU TIÊN: Gọi API Server Node.js (Sinh file Excel chuẩn, siêu tốc bằng thư viện ExcelJS)
+      try {
+        const res = await fetch('/api/export-excel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ logEntries })
+        });
+
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          if (btn) { btn.innerHTML = originalHtml; btn.disabled = false; }
+          return;
+        }
+      } catch (e) {
+        console.warn("Server export API failed, trying Client-Side ExcelJS...", e);
+      }
+
+      // 2. PHƯƠNG ÁN 2: Kết xuất trực tiếp trên Trình duyệt bằng ExcelJS Client
+      if (typeof ExcelJS !== 'undefined') {
+        try {
+          const workbook = new ExcelJS.Workbook();
+          workbook.creator = 'Hệ Thống IoT HUIT';
+          const ws = workbook.addWorksheet('Nhật Ký Vận Hành', { views: [{ showGridLines: true }] });
+
+          ws.columns = [
+            { key: 'stt', width: 9 },
+            { key: 'time', width: 22 },
+            { key: 'msg', width: 68 },
+            { key: 'type', width: 22 }
+          ];
+
+          // Tiêu đề cơ quan
+          ws.mergeCells('A1:D1');
+          const cellA1 = ws.getCell('A1');
+          cellA1.value = 'TRƯỜNG ĐẠI HỌC CÔNG THƯƠNG TP. HỒ CHÍ MINH (HUIT) - KHOA CÔNG NGHỆ THÔNG TIN';
+          cellA1.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E3A8A' } };
+          cellA1.alignment = { vertical: 'middle', horizontal: 'left' };
+
+          ws.mergeCells('A2:D2');
+          const cellA2 = ws.getCell('A2');
+          cellA2.value = 'HỆ THỐNG CẢNH BÁO RÒ RỈ KHÍ GAS VÀ CHÁY THÔNG MINH (SMART IOT GAS & FIRE ALERT)';
+          cellA2.font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF64748B' } };
+          cellA2.alignment = { vertical: 'middle', horizontal: 'left' };
+
+          // Banner Tiêu Đề Báo Cáo
+          ws.mergeCells('A4:D4');
+          const cellTitle = ws.getCell('A4');
+          cellTitle.value = 'BÁO CÁO NHẬT KÝ SỰ CỐ & VẬN HÀNH THIẾT BỊ';
+          cellTitle.font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
+          cellTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } };
+          cellTitle.alignment = { vertical: 'middle', horizontal: 'center' };
+          ws.getRow(4).height = 30;
+
+          // Hàng 5: Metadata
+          ws.mergeCells('A5:D5');
+          const cellMeta = ws.getCell('A5');
+          const nowStr = new Date().toLocaleString('vi-VN');
+          cellMeta.value = `Thời gian xuất báo cáo: ${nowStr}  |  Tổng số sự kiện: ${logEntries.length}  |  Kênh truyền: Firebase RTDB`;
+          cellMeta.font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF334155' } };
+          cellMeta.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+          cellMeta.alignment = { vertical: 'middle', horizontal: 'center' };
+          ws.getRow(5).height = 20;
+
+          // Hàng 7: Tiêu đề cột
+          const headerRow = ws.getRow(7);
+          headerRow.values = ['STT', 'Thời Gian Ghi Nhận', 'Chi Tiết Sự Kiện & Hành Động', 'Phân Loại Mức Độ'];
+          headerRow.height = 26;
+          headerRow.eachCell((cell) => {
+            cell.font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+              bottom: { style: 'medium', color: { argb: 'FF0F172A' } },
+              left: { style: 'thin', color: { argb: 'FF94A3B8' } },
+              right: { style: 'thin', color: { argb: 'FF94A3B8' } }
+            };
+          });
+
+          // Hàng dữ liệu
+          const startRow = 8;
+          logEntries.forEach((item, index) => {
+            const row = ws.getRow(startRow + index);
+            const stt = logEntries.length - index;
+            const time = item.time || '';
+            const msg = item.msg || '';
+
+            let tag = "BÌNH THƯỜNG";
+            let tagBg = 'FFDCFCE7';
+            let tagFg = 'FF166534';
+
+            if (msg.includes("BÁO ĐỘNG ĐỎ")) {
+              tag = "🔥 BÁO ĐỘNG ĐỎ";
+              tagBg = 'FFFEE2E2';
+              tagFg = 'FF991B1B';
+            } else if (msg.includes("CẢNH BÁO")) {
+              tag = "⚠️ CẢNH BÁO GAS";
+              tagBg = 'FFFEF3C7';
+              tagFg = 'FF92400E';
+            } else if (msg.includes("LỆNH ĐIỀU KHIỂN") || msg.includes("ĐIỀU KHIỂN")) {
+              tag = "🎮 ĐIỀU KHIỂN";
+              tagBg = 'FFE0F2FE';
+              tagFg = 'FF0369A1';
+            } else if (msg.includes("Giờ nấu ăn") || msg.includes("GIỜ NẤU")) {
+              tag = "🍳 GIỜ NẤU ĂN";
+              tagBg = 'FFFFEDD5';
+              tagFg = 'FFC2410C';
+            }
+
+            row.values = [stt, time, msg, tag];
+            row.height = 22;
+
+            const rowBg = (index % 2 === 0) ? 'FFFFFFFF' : 'FFF8FAFC';
+
+            row.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+            row.getCell(1).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF475569' } };
+            row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+
+            row.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' };
+            row.getCell(2).font = { name: 'Calibri', size: 10, color: { argb: 'FF334155' } };
+            row.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+
+            row.getCell(3).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+            row.getCell(3).font = { name: 'Calibri', size: 9.5, color: { argb: 'FF0F172A' } };
+            row.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+
+            row.getCell(4).alignment = { vertical: 'middle', horizontal: 'center' };
+            row.getCell(4).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: tagFg } };
+            row.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: tagBg } };
+
+            for (let c = 1; c <= 4; c++) {
+              row.getCell(c).border = {
+                top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+              };
+            }
+          });
+
+          const endRow = startRow + logEntries.length + 1;
+          ws.mergeCells(`A${endRow}:D${endRow}`);
+          const footerNote = ws.getCell(`A${endRow}`);
+          footerNote.value = `* Báo cáo này được kết xuất tự động từ hệ thống IoT ESP32 & Web Dashboard. Dữ liệu thời gian thực được lưu trữ qua Firebase Realtime Database.`;
+          footerNote.font = { name: 'Calibri', size: 8.5, italic: true, color: { argb: 'FF64748B' } };
+          footerNote.alignment = { vertical: 'middle', horizontal: 'left' };
+
+          const signRow = endRow + 2;
+          ws.mergeCells(`A${signRow}:B${signRow}`);
+          const signLeft = ws.getCell(`A${signRow}`);
+          signLeft.value = 'NGƯỜI LẬP BÁO CÁO\n(Ký và ghi rõ họ tên)';
+          signLeft.font = { name: 'Calibri', size: 9.5, bold: true };
+          signLeft.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+
+          ws.mergeCells(`C${signRow}:D${signRow}`);
+          const signRight = ws.getCell(`C${signRow}`);
+          signRight.value = 'GIẢNG VIÊN HƯỚNG DẪN\n(Ký và ghi rõ họ tên)';
+          signRight.font = { name: 'Calibri', size: 9.5, bold: true };
+          signRight.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+          ws.getRow(signRow).height = 42;
+
+          const buffer = await workbook.xlsx.writeBuffer();
+          const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          if (btn) { btn.innerHTML = originalHtml; btn.disabled = false; }
+          return;
+        } catch (err) {
+          console.error("Client ExcelJS export error:", err);
+        }
+      }
+
+      // 3. PHƯƠNG ÁN DỰ PHÒNG: Xuất CSV nếu các thư viện Excel đều lỗi
+      exportLogsCSV();
+      if (btn) { btn.innerHTML = originalHtml; btn.disabled = false; }
+    }
+
+    function exportLogsCSV() {
+      let csv = "\uFEFFSTT,Thời gian,Nội dung sự kiện\n";
+      logEntries.forEach((r, idx) => csv += `"${logEntries.length - idx}","${r.time}","${r.msg.replace(/"/g, '""')}"\n`);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `BaoCao_HeThongGasChay_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    }
+
+    // ÂM THANH TEST BEEP (Web Audio API)
+    function testBeep() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.value = 2000;
+        osc.start();
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+        setTimeout(() => osc.stop(), 300);
+      } catch(e) {}
+    }
+
+    // QUẢN LÝ MODAL CẤU HÌNH
+    function openModal() {
+      document.getElementById('cfgModal').classList.remove('hidden');
+      document.getElementById('selConnMode').value = connMode;
+      onConnModeChange();
+    }
+    function closeModal() {
+      document.getElementById('cfgModal').classList.add('hidden');
+    }
+    function onConnModeChange() {
+      const mode = document.getElementById('selConnMode').value;
+      const grp = document.getElementById('fbConfigGroup');
+      if (mode === 'firebase') grp.classList.remove('hidden');
+      else grp.classList.add('hidden');
+    }
+    function saveAndApplySettings() {
+      connMode = document.getElementById('selConnMode').value;
+      localStorage.setItem('iot_conn_mode', connMode);
+      if (connMode === 'firebase') {
+        localStorage.setItem('iot_fb_url', document.getElementById('fbDbUrl').value);
+        localStorage.setItem('iot_fb_project_id', document.getElementById('fbProjectId').value);
+        localStorage.setItem('iot_fb_api_key', document.getElementById('fbApiKey').value);
+      }
+      closeModal();
+      initConnection();
+    }
+
+    // Khởi tạo Theme, Nhật ký lưu trữ & Kết nối
+    applyTheme(currentTheme);
+    loadPersistedLogs();
+    initConnection();
+  </script>
+</body>
+</html>

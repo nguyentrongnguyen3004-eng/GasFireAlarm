@@ -6,3 +6,5 @@
 node_modules/
 .DS_Store
 web-dashboard/sensor_history.json
+web-dashboard/logs_history.json
+web-dashboard/node_modules/
